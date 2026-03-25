@@ -1,16 +1,1 @@
-[
-  {
-    "id": "c49c808408a52b21",
-    "warrantNumber": "W-2026-0001",
-    "type": "arrest",
-    "status": "active",
-    "subject": "e1",
-    "issuedBy": "e31",
-    "issuedAt": "2026-03-25",
-    "expiresAt": "2027-03-31",
-    "linkedCaseId": "",
-    "description": "213312",
-    "createdBy": "justawacko_",
-    "createdAt": "2026-03-25T23:23:55.074Z"
-  }
-]
+[]

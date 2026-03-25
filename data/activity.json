@@ -1,5 +1,19 @@
 [
   {
+    "id": "8f77f13625a079b5",
+    "type": "warrant_executed",
+    "description": "Warrant W-2026-0001 marked as executed",
+    "user": "justawacko_",
+    "timestamp": "2026-03-25T23:38:50.117Z"
+  },
+  {
+    "id": "17f33c1d30da095d",
+    "type": "case_created",
+    "description": "Case DOJ-2026-0001 created — TEest",
+    "user": "justawacko_",
+    "timestamp": "2026-03-25T23:25:30.378Z"
+  },
+  {
     "id": "45728ea95673396c",
     "type": "warrant_issued",
     "description": "Arrest warrant W-2026-0001 issued for e1",

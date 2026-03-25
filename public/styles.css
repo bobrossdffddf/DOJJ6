@@ -397,3 +397,74 @@ code {
   .table-row-link { grid-template-columns: 1fr 1fr !important; }
   .table-header { display: none; }
 }
+
+/* ── Permission banner ── */
+.perm-banner {
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  background: #fff;
+}
+.perm-citizen { border-left: 4px solid #9ca3af; }
+.perm-clerk   { border-left: 4px solid #3b82f6; }
+.perm-lawyer  { border-left: 4px solid #7c3aed; }
+.perm-ag      { border-left: 4px solid #16a34a; }
+.perm-banner-level { font-weight: 700; font-size: 0.9375rem; margin-bottom: 0.4rem; }
+.perm-banner-roles { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.perm-banner-rights { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.role-chip {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+  color: #374151;
+}
+.perm-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+.perm-yes { background: #dcfce7; color: #15803d; }
+.perm-no  { background: #f3f4f6; color: #9ca3af; }
+
+/* ── Badge orange (missing from main set) ── */
+.badge-orange { background: #ffedd5; color: #c2410c; }
+
+/* ── Access denied ── */
+.access-denied {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  max-width: 480px;
+  margin: 3rem auto;
+}
+.denied-icon { font-size: 2.5rem; margin-bottom: 1rem; }
+.access-denied h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+.access-denied p { color: #6b7280; font-size: 0.9rem; line-height: 1.5; margin-bottom: 0.5rem; }
+.access-denied .btn-primary { margin-top: 1rem; }
+
+/* ── Role info grid on login ── */
+.role-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  text-align: left;
+}
+.role-info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
