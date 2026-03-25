@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const FileStore = require('session-file-store')(session);
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
@@ -313,10 +314,18 @@ function layout({ title, body, user, page = '' }) {
 }
 
 // ── Express setup ─────────────────────────────────────────────────────────────
+app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(express.json({ limit: '1mb' }));
+
+const SESSIONS_DIR = path.join(__dirname, 'data', 'sessions');
+if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+
 app.use(session({
-  secret: config.sessionSecret, resave: false, saveUninitialized: false,
+  store: new FileStore({ path: SESSIONS_DIR, ttl: 21600, retries: 1, logFn: () => {} }),
+  secret: config.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', maxAge: 1000 * 60 * 60 * 6 }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -330,6 +339,7 @@ app.get('/', (req, res) => {
   const ready = Boolean(config.clientId && config.clientSecret);
   const state = crypto.randomBytes(16).toString('hex');
   req.session.oauthState = state;
+  req.session.save();
 
   const body = `
   <div class="login-wrap">
