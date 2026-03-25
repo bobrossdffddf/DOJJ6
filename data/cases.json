@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "caseNumber": "DOJ-2026-0001",
+    "title": "Illegal Street Racing Ring",
+    "subject": "Alex Mercer",
+    "status": "Open",
+    "officer": "Sgt. J. Carter",
+    "openedAt": "2026-03-20",
+    "notes": "Ongoing surveillance and vehicle impound review."
+  },
+  {
+    "id": 2,
+    "caseNumber": "DOJ-2026-0002",
+    "title": "Fraudulent Property Claims",
+    "subject": "Rivera Holdings LLC",
+    "status": "Pending Filing",
+    "officer": "AUSA N. Brooks",
+    "openedAt": "2026-03-22",
+    "notes": "Collecting witness affidavits from city records office."
+  }
+]
