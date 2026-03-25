@@ -6,7 +6,7 @@ const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 const config = {
   clientId: process.env.DISCORD_CLIENT_ID || '',
@@ -325,6 +325,6 @@ app.get('/logout', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`DOJ RP portal running at http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`DOJ RP portal running at http://0.0.0.0:${PORT}`);
 });
