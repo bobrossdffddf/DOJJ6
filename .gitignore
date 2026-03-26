@@ -2,3 +2,7 @@ node_modules/
 .env
 .DS_Store
 npm-debug.log*
+
+# Runtime data — never commit session tokens or uploaded files
+data/sessions/
+data/uploads/
