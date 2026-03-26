@@ -542,10 +542,12 @@ app.get('/dashboard', ensureAuth, (req, res) => {
   const subpoenas = readJSON(SUBPOENAS_FILE);
   const activity  = readJSON(ACTIVITY_FILE).slice(0, 12);
 
-  const openCases       = cases.filter(c => !['closed','dismissed'].includes(c.status)).length;
-  const activeWarrants  = warrants.filter(w => w.status === 'active').length;
+  const openCases        = cases.filter(c => !['closed','dismissed'].includes(c.status)).length;
+  const pendingTrial     = cases.filter(c => ['pending','filed'].includes(c.status)).length;
+  const activeWarrants   = warrants.filter(w => w.status === 'active').length;
   const pendingSubpoenas = subpoenas.filter(s => s.status === 'pending').length;
-  const totalDocs       = getTotalFileCount();
+  const totalDocs        = getTotalFileCount();
+  const defendants       = readJSON(DEFENDANTS_FILE);
 
   const roleTagsHtml = (user.roleNames || []).length
     ? user.roleNames.map(r => `<span class="role-chip">${escapeHtml(r)}</span>`).join('')
@@ -640,9 +642,11 @@ app.get('/dashboard', ensureAuth, (req, res) => {
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-number">${cases.length}</div><div class="stat-label">Total Cases</div></div>
     <div class="stat-card stat-card-green"><div class="stat-number">${openCases}</div><div class="stat-label">Active Cases</div></div>
+    <div class="stat-card stat-card-blue"><div class="stat-number">${pendingTrial}</div><div class="stat-label">Pending Trial</div></div>
     <div class="stat-card stat-card-red"><div class="stat-number">${activeWarrants}</div><div class="stat-label">Active Warrants</div></div>
-    <div class="stat-card stat-card-blue"><div class="stat-number">${totalDocs}</div><div class="stat-label">Documents</div></div>
+    <div class="stat-card"><div class="stat-number">${defendants.length}</div><div class="stat-label">Defendant Records</div></div>
     <div class="stat-card"><div class="stat-number">${pendingSubpoenas}</div><div class="stat-label">Pending Subpoenas</div></div>
+    <div class="stat-card"><div class="stat-number">${totalDocs}</div><div class="stat-label">Documents</div></div>
   </div>
 
   <div class="two-col">
@@ -672,7 +676,8 @@ function activityIcon(type) {
     case_created:'NEW', case_updated:'UPD', case_closed:'CLO',
     warrant_issued:'WRT', warrant_executed:'EXE',
     file_uploaded:'DOC', note_added:'NOTE',
-    subpoena_issued:'SUB', defendant_added:'DEF'
+    subpoena_issued:'SUB', defendant_added:'DEF',
+    evidence_added:'EVD', sentence_recorded:'SEN'
   }[type] || '–';
 }
 
@@ -888,6 +893,7 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
         <dt>Trial Date</dt><dd>${fmtDate(c.trialDate)}</dd>
         <dt>Sentence</dt><dd>${escapeHtml(c.sentence||'—')}</dd>
         ${c.outcome?`<dt>Outcome</dt><dd>${escapeHtml(c.outcome)}</dd>`:''}
+        ${c.pleaDealNotes?`<dt>Plea Agreement</dt><dd>${escapeHtml(c.pleaDealNotes)}</dd>`:''}
       </dl>
     </div>
   </div>
@@ -922,6 +928,35 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
       <textarea class="input" name="text" rows="3" placeholder="Add a note, hearing update, or journal entry…" required></textarea>
       <button class="btn-primary" style="margin-top:0.5rem" type="submit">Add Note</button>
     </form>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Evidence Log</span>
+    </div>
+    ${(c.evidence && c.evidence.length) ? `
+    <div class="table-header" style="grid-template-columns:1.5fr 1fr 1.5fr 1fr 1fr"><span>Item</span><span>Type</span><span>Description</span><span>Collected By</span><span>Date</span></div>
+    <div class="table-rows">
+      ${(c.evidence||[]).map(e=>`
+      <div class="table-row-link" style="--cols:5">
+        <span class="tr-cell fw">${escapeHtml(e.item)}</span>
+        <span class="tr-cell">${badge(e.type||'physical','badge-blue')}</span>
+        <span class="tr-cell muted-text">${escapeHtml(e.description||'—')}</span>
+        <span class="tr-cell muted-text">${escapeHtml(e.collectedBy||'—')}</span>
+        <span class="tr-cell muted-text">${fmtDate(e.collectedAt)}</span>
+      </div>`).join('')}
+    </div>` : '<p class="muted-text" style="padding:0.75rem 0">No evidence logged yet.</p>'}
+    ${canWrite ? `
+    <form method="post" action="/cases/${c.id}/evidence" style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #f3f4f6">
+      <div class="form-grid">
+        <div class="form-group"><label>Evidence Item <span class="req">*</span></label><input class="input" name="item" required placeholder="e.g. Firearm, SIM card, CCTV footage…"/></div>
+        <div class="form-group"><label>Type</label><select class="input" name="type"><option value="physical">Physical</option><option value="digital">Digital</option><option value="documentary">Documentary</option><option value="testimonial">Testimonial</option><option value="forensic">Forensic</option><option value="other">Other</option></select></div>
+        <div class="form-group"><label>Description</label><input class="input" name="description" placeholder="Brief description of the item"/></div>
+        <div class="form-group"><label>Collected By</label><input class="input" name="collectedBy" placeholder="Officer or agency name"/></div>
+        <div class="form-group"><label>Collection Date</label><input class="input" type="date" name="collectedAt"/></div>
+        <div class="form-group"><label>Location Found</label><input class="input" name="locationFound" placeholder="Where the evidence was recovered"/></div>
+      </div>
+      <button class="btn-primary" type="submit">Add Evidence</button>
+    </form>` : ''}
   </div>`;
   return res.send(layout({ title: `${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
@@ -970,6 +1005,7 @@ app.get('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
         <div class="form-group"><label>Trial Date</label><input class="input" type="date" name="trialDate" value="${escapeHtml(c.trialDate||'')}"/></div>
       </div>
       <div class="form-group"><label>Outcome / Notes on Disposition</label><input class="input" name="outcome" value="${escapeHtml(c.outcome||'')}" placeholder="e.g. Guilty — sentenced 10 yrs TDCJ"/></div>
+      <div class="form-group"><label>Plea Deal / Agreement Notes</label><textarea class="input" name="pleaDealNotes" rows="2" placeholder="Detail any plea agreement terms, conditions, or negotiations…">${escapeHtml(c.pleaDealNotes||'')}</textarea></div>
       <div class="section-label">Charges</div>
       <div class="form-group">
         <select class="input" id="chargeSelect" onchange="addCharge(this)"><option value="">— Add a charge —</option>${chargeOptions}</select>
@@ -988,7 +1024,7 @@ app.post('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
   const cases = readJSON(CASES_FILE);
   const idx = cases.findIndex(x => x.id === req.params.id);
   if (idx===-1) return res.status(404).send('Case not found.');
-  const { title, subject, status, caseGrade, priority, county, courtType, location, assignedOfficer, prosecutor, defenseAttorney, presidingJudge, plea, verdict, bondAmount, sentence, courtDate, trialDate, outcome, chargesRaw, notes } = req.body;
+  const { title, subject, status, caseGrade, priority, county, courtType, location, assignedOfficer, prosecutor, defenseAttorney, presidingJudge, plea, verdict, bondAmount, sentence, courtDate, trialDate, outcome, pleaDealNotes, chargesRaw, notes } = req.body;
   const charges = chargesRaw ? chargesRaw.split(',').map(c=>c.trim()).filter(Boolean) : [];
   Object.assign(cases[idx], {
     title, subject, status, caseGrade: caseGrade||'', priority, county: county||'',
@@ -997,7 +1033,8 @@ app.post('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
     plea: plea||'not entered', verdict: verdict||'pending',
     bondAmount: bondAmount ? parseFloat(bondAmount) : null,
     sentence: sentence||'', courtDate: courtDate||'', trialDate: trialDate||'',
-    outcome: outcome||'', charges, notes: notes||'', updatedAt: new Date().toISOString()
+    outcome: outcome||'', pleaDealNotes: pleaDealNotes||'',
+    charges, notes: notes||'', updatedAt: new Date().toISOString()
   });
   writeJSON(CASES_FILE, cases);
   logActivity('case_updated', `Case ${cases[idx].caseNumber} updated`, req.session.user.username);
@@ -1022,6 +1059,40 @@ app.post('/cases/:id/notes', requirePerm('clerk'), (req, res) => {
   cases[idx].updatedAt = new Date().toISOString();
   writeJSON(CASES_FILE, cases);
   logActivity('note_added', `Note added to case ${cases[idx].caseNumber}`, req.session.user.username);
+  return res.redirect(`/cases/${req.params.id}`);
+});
+
+app.post('/cases/:id/evidence', requirePerm('lawyer'), (req, res) => {
+  const cases = readJSON(CASES_FILE);
+  const idx = cases.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  const { item, type, description, collectedBy, collectedAt, locationFound } = req.body;
+  if (!item || !item.trim()) return res.redirect(`/cases/${req.params.id}`);
+  if (!cases[idx].evidence) cases[idx].evidence = [];
+  cases[idx].evidence.push({
+    id: newId(),
+    item: item.trim(),
+    type: type||'physical',
+    description: description||'',
+    collectedBy: collectedBy||'',
+    collectedAt: collectedAt||'',
+    locationFound: locationFound||'',
+    addedBy: req.session.user.username,
+    addedAt: new Date().toISOString()
+  });
+  cases[idx].updatedAt = new Date().toISOString();
+  writeJSON(CASES_FILE, cases);
+  logActivity('evidence_added', `Evidence logged on case ${cases[idx].caseNumber}: ${item.trim()}`, req.session.user.username);
+  return res.redirect(`/cases/${req.params.id}`);
+});
+
+app.post('/cases/:id/evidence/:evidenceId/delete', requirePerm('lawyer'), (req, res) => {
+  const cases = readJSON(CASES_FILE);
+  const idx = cases.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  cases[idx].evidence = (cases[idx].evidence||[]).filter(e=>e.id!==req.params.evidenceId);
+  cases[idx].updatedAt = new Date().toISOString();
+  writeJSON(CASES_FILE, cases);
   return res.redirect(`/cases/${req.params.id}`);
 });
 
