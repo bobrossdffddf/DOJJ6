@@ -16,7 +16,7 @@ A Discord-authenticated web portal for the State of Texas Department of Justice.
 
 - **Dashboard** — Stats overview (cases, warrants, pending trial, defendants, subpoenas, documents) + recent activity + upcoming hearings
 - **Case Management** — Full CRUD: Criminal, Traffic, Civil, Internal Affairs, Juvenile cases with Texas Penal Code charges, evidence log, plea deal notes, sentencing, notes journal, court dates, priority, and status tracking. Clerks can create and edit cases; only AG-level can delete.
-- **Warrant Tracker** — Issue and manage Arrest, Search, and Bench warrants linked to cases
+- **Warrant Tracker** — Issue and manage Arrest (AO-442), Search & Seizure (AO-093), and Bench warrants linked to cases. Each warrant auto-generates a filled official PDF upon creation. PDFs are served at `/warrant-pdfs/` and attached to Discord warrant lookups.
 - **Defendant Records** — Track personal information, linked cases, and linked warrants per defendant
 - **Subpoenas** — Issue Ad Testificandum and Duces Tecum subpoenas linked to cases
 - **Evidence Log** — Log physical, digital, documentary, forensic, and testimonial evidence per case
@@ -45,14 +45,18 @@ A Discord-authenticated web portal for the State of Texas Department of Justice.
 ## Project Structure
 
 - `server.js` — Express server, all routes, HTML templates, Discord API integration
-- `bot.js` — Discord bot with slash commands
+- `bot.js` — Discord bot with slash commands and PDF attachment for warrant lookups
+- `generate_warrant.py` — Fills AO-442 (Arrest) or AO-093 (Search & Seizure) PDF templates based on warrant type
 - `public/styles.css` — White/minimal stylesheet
+- `data/arrest_warrant_template.pdf` — AO-442 Arrest Warrant fillable template
+- `data/search_warrant_template.pdf` — AO-093 Search and Seizure Warrant fillable template
 - `data/cases.json` — Case records (includes evidence[], caseNotes[], charges[])
-- `data/warrants.json` — Warrant records
+- `data/warrants.json` — Warrant records (includes pdfFile, pdfName for generated PDFs)
 - `data/subpoenas.json` — Subpoena records
 - `data/defendants.json` — Defendant records
 - `data/activity.json` — Activity log (last 200 entries)
 - `data/uploads/<channelId>/` — Uploaded files per Discord channel
+- `data/uploads/warrant-pdfs/` — Auto-generated warrant PDFs (served at /warrant-pdfs/)
 
 ## Running the App
 

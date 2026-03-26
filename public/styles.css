@@ -51,11 +51,16 @@ a { color: inherit; text-decoration: none; }
   gap: 0.5rem;
 }
 .topbar-logo {
-  height: 28px;
-  width: 28px;
+  height: 28px !important;
+  width: 28px !important;
+  max-height: 28px !important;
+  max-width: 28px !important;
+  min-height: 28px;
+  min-width: 28px;
   object-fit: contain;
   border-radius: 50%;
   flex-shrink: 0;
+  display: block;
 }
 
 /* ── Subnav ── */
@@ -169,8 +174,10 @@ a { color: inherit; text-decoration: none; }
 .login-sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.75rem; line-height: 1.55; }
 .login-seal { text-align: center; margin-bottom: 1.25rem; }
 .login-logo-img {
-  width: 88px;
-  height: 88px;
+  width: 88px !important;
+  height: 88px !important;
+  max-width: 88px !important;
+  max-height: 88px !important;
   object-fit: contain;
   border-radius: 50%;
   display: block;

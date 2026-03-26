@@ -31,8 +31,9 @@ const DEFENDANTS_FILE        = path.join(DATA_DIR, 'defendants.json');
 const WARRANT_REQUESTS_FILE  = path.join(DATA_DIR, 'warrant_requests.json');
 const WARRANT_REQ_UPLOADS_DIR = path.join(UPLOADS_DIR, 'warrant-requests');
 const WARRANT_RETURN_UPLOADS_DIR = path.join(UPLOADS_DIR, 'warrant-returns');
+const WARRANT_PDFS_DIR = path.join(UPLOADS_DIR, 'warrant-pdfs');
 
-for (const d of [DATA_DIR, UPLOADS_DIR, WARRANT_REQ_UPLOADS_DIR, WARRANT_RETURN_UPLOADS_DIR])
+for (const d of [DATA_DIR, UPLOADS_DIR, WARRANT_REQ_UPLOADS_DIR, WARRANT_RETURN_UPLOADS_DIR, WARRANT_PDFS_DIR])
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE, SUBPOENAS_FILE, DEFENDANTS_FILE, WARRANT_REQUESTS_FILE])
   if (!fs.existsSync(f)) fs.writeFileSync(f, '[]');
@@ -43,7 +44,7 @@ function readJSON(file) {
 
 function generateWarrantPdf(warrantData) {
   return new Promise((resolve) => {
-    const outFile = path.join(WARRANT_REQ_UPLOADS_DIR, `warrant_${warrantData.warrantNumber}_${Date.now()}.pdf`);
+    const outFile = path.join(WARRANT_PDFS_DIR, `warrant_${warrantData.warrantNumber}_${Date.now()}.pdf`);
     const py = spawn('python3', [path.join(__dirname, 'generate_warrant.py'), outFile]);
     py.stdin.write(JSON.stringify(warrantData));
     py.stdin.end();
@@ -1236,45 +1237,126 @@ app.get('/warrants/new', requirePerm('clerk'), (req, res) => {
   const cases = readJSON(CASES_FILE);
   const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
   const caseOptions = cases.map(c=>`<option value="${c.id}" ${caseId===c.id?'selected':''}>${escapeHtml(c.caseNumber)} — ${escapeHtml(c.title)}</option>`).join('');
+  const today = new Date().toISOString().split('T')[0];
   const body = `
   <div class="page-header"><a class="back-link" href="/warrants">← Back to warrants</a><h1 class="page-title">Issue Warrant</h1></div>
   <div class="card">
     <form method="post" action="/warrants">
+      <div class="section-label">Warrant Details</div>
       <div class="form-grid">
-        <div class="form-group"><label>Warrant Type <span class="req">*</span></label><select class="input" name="type" required><option value="arrest">Arrest Warrant</option><option value="search">Search Warrant</option><option value="bench">Bench Warrant</option></select></div>
-        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of subject"/></div>
+        <div class="form-group"><label>Warrant Type <span class="req">*</span></label>
+          <select class="input" name="type" id="warrantTypeSelect" required onchange="updateWarrantFields()">
+            <option value="arrest">Arrest Warrant (AO-442)</option>
+            <option value="search">Search &amp; Seizure Warrant (AO-093)</option>
+            <option value="bench">Bench Warrant</option>
+          </select>
+        </div>
         <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
-        <div class="form-group"><label>Issuing Judge <span class="req">*</span></label><input class="input" name="judge" required placeholder="Honorable Judge name"/></div>
-        <div class="form-group"><label>Subject DOB</label><input class="input" type="date" name="subjectDob"/></div>
-        <div class="form-group"><label>Subject Description</label><input class="input" name="subjectDescription" placeholder="Height, weight, hair, eyes…"/></div>
-        <div class="form-group"><label>Address / Location to Search or Arrest</label><input class="input" name="address" placeholder="Street address or last known location"/></div>
-        <div class="form-group"><label>Linked Case</label><select class="input" name="linkedCaseId"><option value="">— None —</option>${caseOptions}</select></div>
-        <div class="form-group"><label>Issue Date</label><input class="input" type="date" name="issuedAt" value="${new Date().toISOString().split('T')[0]}"/></div>
+        <div class="form-group"><label>Issuing Judge / Officer <span class="req">*</span></label><input class="input" name="judge" required placeholder="Honorable Judge name"/></div>
+        <div class="form-group"><label>Issue Date</label><input class="input" type="date" name="issuedAt" value="${today}"/></div>
         <div class="form-group"><label>Expiration Date</label><input class="input" type="date" name="expiresAt"/></div>
+        <div class="form-group"><label>Linked Case</label><select class="input" name="linkedCaseId"><option value="">— None —</option>${caseOptions}</select></div>
       </div>
-      <div class="form-group"><label>Probable Cause / Description <span class="req">*</span></label><textarea class="input" name="description" rows="4" required placeholder="Describe the probable cause, charges, and reason for this warrant…"></textarea></div>
-      <div class="form-actions"><button class="btn-primary" type="submit">Issue Warrant</button><a class="btn-sm" href="/warrants">Cancel</a></div>
+
+      <div class="section-label">Subject Information</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of subject"/></div>
+        <div class="form-group"><label>Known Aliases</label><input class="input" name="aliases" placeholder="AKA names or nicknames"/></div>
+        <div class="form-group"><label>Date of Birth</label><input class="input" type="date" name="subjectDob"/></div>
+        <div class="form-group"><label>Last Known Address</label><input class="input" name="address" placeholder="Street address or last known location"/></div>
+        <div class="form-group"><label>Sex</label>
+          <select class="input" name="sex"><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select>
+        </div>
+        <div class="form-group"><label>Race</label>
+          <select class="input" name="race"><option value="">—</option><option>White</option><option>Black</option><option>Hispanic</option><option>Asian</option><option>Native American</option><option>Other</option></select>
+        </div>
+        <div class="form-group"><label>Height</label><input class="input" name="height" placeholder='e.g. 5&apos;11"'/></div>
+        <div class="form-group"><label>Weight</label><input class="input" name="weight" placeholder="e.g. 185 lbs"/></div>
+        <div class="form-group"><label>Hair Color</label><input class="input" name="hair" placeholder="e.g. Brown"/></div>
+        <div class="form-group"><label>Eye Color</label><input class="input" name="eyes" placeholder="e.g. Blue"/></div>
+        <div class="form-group"><label>Phone Number</label><input class="input" name="phone" placeholder="Last known phone number"/></div>
+        <div class="form-group"><label>Last Known Employment</label><input class="input" name="employment" placeholder="Employer or occupation"/></div>
+      </div>
+      <div class="form-group"><label>Physical Description / Distinguishing Marks</label><textarea class="input" name="subjectDescription" rows="2" placeholder="Scars, tattoos, or other distinguishing marks…"></textarea></div>
+      <div class="form-group"><label>History of Violence / Weapons / Drug Use</label><textarea class="input" name="history" rows="2" placeholder="Relevant criminal history or risk indicators…"></textarea></div>
+
+      <div id="searchFields" style="display:none">
+        <div class="section-label">Search Warrant — Property &amp; Items</div>
+        <div class="form-group"><label>Property / Premises to Search</label><input class="input" name="searchProperty" placeholder="Full address or description of property to be searched"/></div>
+        <div class="form-group"><label>Items to be Seized</label><textarea class="input" name="itemsToSeize" rows="3" placeholder="Describe items or evidence to be seized…"></textarea></div>
+        <div class="form-group"><label>Execute Warrant By</label><input class="input" type="date" name="executeBy" placeholder="Deadline to execute"/></div>
+        <div class="form-group"><label>Return Warrant To (Magistrate)</label><input class="input" name="magistrate" placeholder="United States Magistrate Judge / Judge name"/></div>
+      </div>
+
+      <div id="arrestFields">
+        <div class="section-label">Arrest Warrant — Charging Document</div>
+        <div class="form-group"><label>Document Type</label>
+          <select class="input" name="documentType">
+            <option value="Complaint">Complaint</option>
+            <option value="Indictment">Indictment</option>
+            <option value="Superseding Indictment">Superseding Indictment</option>
+            <option value="Information">Information</option>
+            <option value="Superseding Information">Superseding Information</option>
+            <option value="Probation Violation Petition">Probation Violation Petition</option>
+            <option value="Supervised Release Violation Petition">Supervised Release Violation Petition</option>
+            <option value="Violation Notice">Violation Notice</option>
+            <option value="Order of the Court">Order of the Court</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Investigative Agency</label><input class="input" name="agency" value="State of Texas DOJ" placeholder="Name and address of investigating agency"/></div>
+      </div>
+
+      <div class="section-label">Probable Cause</div>
+      <div class="form-group"><label>Probable Cause / Description <span class="req">*</span></label><textarea class="input" name="description" rows="5" required placeholder="Describe the probable cause, charges, and reason for this warrant…"></textarea></div>
+      <div class="form-actions"><button class="btn-primary" type="submit">Issue Warrant &amp; Generate PDF</button><a class="btn-sm" href="/warrants">Cancel</a></div>
     </form>
-  </div>`;
+  </div>
+  <script>
+  function updateWarrantFields() {
+    const t = document.getElementById('warrantTypeSelect').value;
+    document.getElementById('searchFields').style.display = t === 'search' ? '' : 'none';
+    document.getElementById('arrestFields').style.display = t === 'search' ? 'none' : '';
+  }
+  updateWarrantFields();
+  </script>`;
   return res.send(layout({ title: 'Issue Warrant — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
-app.post('/warrants', requirePerm('clerk'), (req, res) => {
-  const { type, subject, county, judge, subjectDob, subjectDescription, address, linkedCaseId, issuedAt, expiresAt, description } = req.body;
+app.post('/warrants', requirePerm('clerk'), async (req, res) => {
+  const {
+    type, subject, county, judge, subjectDob, subjectDescription, address, linkedCaseId,
+    issuedAt, expiresAt, description,
+    aliases, sex, race, height, weight, hair, eyes, phone, employment, history,
+    documentType, agency, searchProperty, itemsToSeize, executeBy, magistrate
+  } = req.body;
   if (!type || !subject || !county || !judge || !description) return res.status(400).send('Missing required fields.');
   const warrants = readJSON(WARRANTS_FILE);
   const w = {
     id: newId(), warrantNumber: nextWarrantNumber(), type, subject,
     county: county||'', judge: judge||'',
     subjectDob: subjectDob||'', subjectDescription: subjectDescription||'',
-    address: address||'', linkedCaseId: linkedCaseId||'',
+    address: type === 'search' ? (searchProperty||address||'') : (address||''),
+    linkedCaseId: linkedCaseId||'',
     status: 'active', issuedBy: req.session.user.username,
     issuedAt: issuedAt || new Date().toISOString().split('T')[0],
-    expiresAt: expiresAt||'', executedAt: '', description
+    expiresAt: expiresAt||'', executedAt: '', description,
+    aliases: aliases||'', sex: sex||'', race: race||'',
+    height: height||'', weight: weight||'', hair: hair||'', eyes: eyes||'',
+    phone: phone||'', employment: employment||'', history: history||'',
+    documentType: documentType||'Complaint', agency: agency||'State of Texas DOJ',
+    itemsToSeize: itemsToSeize||'', executeBy: executeBy||'', magistrate: magistrate||''
   };
   warrants.unshift(w);
   writeJSON(WARRANTS_FILE, warrants);
   logActivity('warrant_issued', `${type.charAt(0).toUpperCase()+type.slice(1)} Warrant ${w.warrantNumber} issued for ${subject}`, req.session.user.username);
+
+  const pdfPath = await generateWarrantPdf(w);
+  if (pdfPath) {
+    warrants[0].pdfFile = path.basename(pdfPath);
+    warrants[0].pdfName = `Warrant-${w.warrantNumber}.pdf`;
+    writeJSON(WARRANTS_FILE, warrants);
+  }
+
   refreshBotEmbeds();
   return res.redirect(`/warrants/${w.id}`);
 });
@@ -1308,6 +1390,16 @@ app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
       ${canDelete ? `<form method="post" action="/warrants/${w.id}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete this warrant?')">Delete</button></form>` : ''}
     </div>
   </div>
+  ${w.pdfFile ? `
+  <div class="card" style="background:#f0fdf4;border:1px solid #6ee7b7;margin-bottom:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+      <div>
+        <div style="font-weight:700;color:#065f46;margin-bottom:0.25rem">📄 Signed Warrant PDF Available</div>
+        <div style="font-size:0.85rem;color:#047857">Official ${escapeHtml(w.type.charAt(0).toUpperCase()+w.type.slice(1))} Warrant document ready for download and service.</div>
+      </div>
+      <a class="btn-primary" href="/warrant-pdfs/${encodeURIComponent(w.pdfFile)}" download="${escapeHtml(w.pdfName||'warrant.pdf')}">⬇ Download PDF</a>
+    </div>
+  </div>` : ''}
   <div class="detail-grid">
     <div class="card">
       <div class="card-title" style="margin-bottom:1rem">Warrant Details</div>
@@ -1319,17 +1411,30 @@ app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
         <dt>Issued By</dt><dd>${escapeHtml(w.issuedBy)}</dd>
         <dt>Issue Date</dt><dd>${fmtDate(w.issuedAt)}</dd>
         <dt>Expiration</dt><dd>${fmtDate(w.expiresAt)}</dd>
+        ${w.documentType ? `<dt>Document Type</dt><dd>${escapeHtml(w.documentType)}</dd>` : ''}
+        ${w.agency ? `<dt>Investigative Agency</dt><dd>${escapeHtml(w.agency)}</dd>` : ''}
+        ${w.executeBy ? `<dt>Execute By</dt><dd>${fmtDate(w.executeBy)}</dd>` : ''}
+        ${w.magistrate ? `<dt>Return To (Magistrate)</dt><dd>${escapeHtml(w.magistrate)}</dd>` : ''}
         ${w.executedAt ? `<dt>Executed</dt><dd>${fmtDate(w.executedAt)}</dd>` : ''}
+        ${linkedCase ? `<dt>Linked Case</dt><dd><a class="link" href="/cases/${linkedCase.id}">${escapeHtml(linkedCase.caseNumber)} — ${escapeHtml(linkedCase.title)}</a></dd>` : ''}
       </dl>
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:1rem">Subject Information</div>
       <dl class="detail-list">
         <dt>Subject</dt><dd><strong>${escapeHtml(w.subject)}</strong></dd>
-        <dt>Date of Birth</dt><dd>${fmtDate(w.subjectDob)}</dd>
-        <dt>Description</dt><dd>${escapeHtml(w.subjectDescription||'—')}</dd>
+        ${w.aliases ? `<dt>Known Aliases</dt><dd>${escapeHtml(w.aliases)}</dd>` : ''}
+        <dt>Date of Birth</dt><dd>${w.subjectDob ? fmtDate(w.subjectDob) : '—'}</dd>
+        ${w.sex ? `<dt>Sex</dt><dd>${escapeHtml(w.sex)}</dd>` : ''}
+        ${w.race ? `<dt>Race</dt><dd>${escapeHtml(w.race)}</dd>` : ''}
+        ${w.height||w.weight ? `<dt>Height / Weight</dt><dd>${escapeHtml(w.height||'—')} / ${escapeHtml(w.weight||'—')}</dd>` : ''}
+        ${w.hair||w.eyes ? `<dt>Hair / Eyes</dt><dd>${escapeHtml(w.hair||'—')} / ${escapeHtml(w.eyes||'—')}</dd>` : ''}
+        ${w.subjectDescription ? `<dt>Distinguishing Marks</dt><dd>${escapeHtml(w.subjectDescription)}</dd>` : ''}
         <dt>Address / Location</dt><dd>${escapeHtml(w.address||'—')}</dd>
-        ${linkedCase ? `<dt>Linked Case</dt><dd><a class="link" href="/cases/${linkedCase.id}">${escapeHtml(linkedCase.caseNumber)} — ${escapeHtml(linkedCase.title)}</a></dd>` : ''}
+        ${w.phone ? `<dt>Phone</dt><dd>${escapeHtml(w.phone)}</dd>` : ''}
+        ${w.employment ? `<dt>Employment</dt><dd>${escapeHtml(w.employment)}</dd>` : ''}
+        ${w.history ? `<dt>Criminal History / Risk</dt><dd>${escapeHtml(w.history)}</dd>` : ''}
+        ${w.itemsToSeize ? `<dt>Items to Seize</dt><dd>${escapeHtml(w.itemsToSeize)}</dd>` : ''}
       </dl>
     </div>
   </div>
@@ -1912,7 +2017,7 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
       ${r.reviewedBy ? `<div class="request-reviewer" style="margin-top:0.4rem;font-size:0.8rem;color:#6b7280">
         ${r.status==='approved'?'✅ Signed & approved':'❌ Reviewed'} by <strong>${escapeHtml(r.reviewedBy)}</strong> on ${fmtDate(r.reviewedAt)}
         ${r.reviewNote ? ` — <em>${escapeHtml(r.reviewNote)}</em>` : ''}
-        ${r.warrantPdfFile ? `<br/><a class="link" style="font-weight:600" href="/warrant-request-files/${encodeURIComponent(r.warrantPdfFile)}" download="${escapeHtml(r.warrantPdfName||'warrant.pdf')}">⬇ Download Signed Warrant PDF</a>` : ''}
+        ${r.warrantPdfFile ? `<br/><a class="link" style="font-weight:600" href="/warrant-pdfs/${encodeURIComponent(r.warrantPdfFile)}" download="${escapeHtml(r.warrantPdfName||'warrant.pdf')}">⬇ Download Signed Warrant PDF</a>` : ''}
       </div>` : ''}
       ${r.attachmentName ? `<div style="margin-top:0.3rem;font-size:0.8rem"><a class="link" href="/warrant-request-files/${encodeURIComponent(r.attachmentFile)}" download="${escapeHtml(r.attachmentName)}">📎 ${escapeHtml(r.attachmentName)}</a></div>` : ''}
     </div>
@@ -1930,27 +2035,68 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
     <form method="post" action="/warrant-request" enctype="multipart/form-data">
       <div class="section-label">Warrant Details</div>
       <div class="form-grid">
-        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of the person you are reporting"/></div>
-        <div class="form-group"><label>Warrant Type <span class="req">*</span></label><select class="input" name="type" required><option value="arrest">Arrest Warrant</option><option value="search">Search Warrant</option><option value="bench">Bench Warrant</option></select></div>
+        <div class="form-group"><label>Warrant Type <span class="req">*</span></label>
+          <select class="input" name="type" id="reqTypeSelect" required onchange="updateReqFields()">
+            <option value="arrest">Arrest Warrant</option>
+            <option value="search">Search &amp; Seizure Warrant</option>
+            <option value="bench">Bench Warrant</option>
+          </select>
+        </div>
         <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
         <div class="form-group"><label>Date of Incident</label><input class="input" type="date" name="incidentDate"/></div>
       </div>
+
+      <div class="section-label">Subject / Person of Interest</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of the person"/></div>
+        <div class="form-group"><label>Known Aliases</label><input class="input" name="aliases" placeholder="AKA names or nicknames"/></div>
+        <div class="form-group"><label>Date of Birth</label><input class="input" type="date" name="subjectDob"/></div>
+        <div class="form-group"><label>Last Known Address</label><input class="input" name="address" placeholder="Street address or last known location"/></div>
+        <div class="form-group"><label>Sex</label>
+          <select class="input" name="sex"><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select>
+        </div>
+        <div class="form-group"><label>Race</label>
+          <select class="input" name="race"><option value="">—</option><option>White</option><option>Black</option><option>Hispanic</option><option>Asian</option><option>Native American</option><option>Other</option></select>
+        </div>
+        <div class="form-group"><label>Height</label><input class="input" name="height" placeholder='e.g. 5&apos;11"'/></div>
+        <div class="form-group"><label>Weight</label><input class="input" name="weight" placeholder="e.g. 185 lbs"/></div>
+        <div class="form-group"><label>Hair Color</label><input class="input" name="hair" placeholder="e.g. Brown"/></div>
+        <div class="form-group"><label>Eye Color</label><input class="input" name="eyes" placeholder="e.g. Blue"/></div>
+        <div class="form-group"><label>Phone Number</label><input class="input" name="phone" placeholder="Last known phone number"/></div>
+      </div>
+      <div class="form-group"><label>Physical Description / Distinguishing Marks</label><textarea class="input" name="subjectDescription" rows="2" placeholder="Scars, tattoos, or other distinguishing marks…"></textarea></div>
+
+      <div id="reqSearchFields" style="display:none">
+        <div class="section-label">Search Warrant — Property &amp; Items</div>
+        <div class="form-group"><label>Property / Location to Search</label><input class="input" name="searchProperty" placeholder="Full address or description of premises to search"/></div>
+        <div class="form-group"><label>Items / Evidence to Seize</label><textarea class="input" name="itemsToSeize" rows="3" placeholder="List items, contraband, or evidence expected to be found…"></textarea></div>
+      </div>
+
       <div class="section-label">Your Information</div>
       <div class="form-grid">
-        <div class="form-group"><label>Your Name <span class="req">*</span></label><input class="input" name="requesterDisplay" required value="${escapeHtml(user.username)}" placeholder="Your full name or alias"/></div>
-        <div class="form-group"><label>Contact / Discord</label><input class="input" name="contact" value="${escapeHtml(user.username)}" placeholder="How to reach you"/></div>
+        <div class="form-group"><label>Your Name <span class="req">*</span></label><input class="input" name="requesterDisplay" required value="${escapeHtml(user.username)}" placeholder="Your full name or badge/alias"/></div>
+        <div class="form-group"><label>Badge / Contact</label><input class="input" name="contact" value="${escapeHtml(user.username)}" placeholder="Badge number or how to reach you"/></div>
       </div>
-      <div class="section-label">Description</div>
-      <div class="form-group"><label>Reason / Description <span class="req">*</span></label><textarea class="input" name="reason" rows="5" required placeholder="Describe the incident, why you believe a warrant is needed, any evidence or witnesses…"></textarea></div>
+
+      <div class="section-label">Probable Cause / Incident Description</div>
+      <div class="form-group"><label>Reason / Description <span class="req">*</span></label><textarea class="input" name="reason" rows="6" required placeholder="Describe the incident in detail — what happened, evidence observed, witnesses, why a warrant is necessary…"></textarea></div>
+
       <div class="section-label">Supporting Document <span class="muted-text" style="font-weight:400;font-size:0.8rem">(optional — max 250 MB)</span></div>
       <div class="form-group">
         <label>Attach File</label>
         <input class="input" type="file" name="attachment" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.mp4,.mov,.zip"/>
         <p class="muted-text" style="font-size:0.78rem;margin-top:0.3rem">Accepted: PDF, Word, images, video, ZIP — up to 250 MB</p>
       </div>
-      <div class="form-actions"><button class="btn-primary" type="submit">Submit Request</button></div>
+      <div class="form-actions"><button class="btn-primary" type="submit">Submit Warrant Request</button></div>
     </form>
   </div>
+  <script>
+  function updateReqFields() {
+    const t = document.getElementById('reqTypeSelect').value;
+    document.getElementById('reqSearchFields').style.display = t === 'search' ? '' : 'none';
+  }
+  updateReqFields();
+  </script>
   ${myRequests.length ? `
   <div class="card">
     <div class="card-title" style="margin-bottom:0.75rem">Your Previous Requests</div>
@@ -1960,7 +2106,11 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
 });
 
 app.post('/warrant-request', ensureAuth, wrUpload.single('attachment'), (req, res) => {
-  const { subject, type, county, incidentDate, requesterDisplay, contact, reason } = req.body;
+  const {
+    subject, type, county, incidentDate, requesterDisplay, contact, reason,
+    aliases, subjectDob, address, sex, race, height, weight, hair, eyes, phone,
+    subjectDescription, searchProperty, itemsToSeize
+  } = req.body;
   if (!subject || !type || !county || !reason) return res.status(400).send('Missing required fields.');
   const user = req.session.user;
   const reqs = readJSON(WARRANT_REQUESTS_FILE);
@@ -1976,7 +2126,12 @@ app.post('/warrant-request', ensureAuth, wrUpload.single('attachment'), (req, re
     createdAt: new Date().toISOString(),
     reviewedBy: '', reviewedAt: '', reviewNote: '', linkedWarrantId: '',
     attachmentFile: req.file ? req.file.filename : '',
-    attachmentName: req.file ? req.file.originalname : ''
+    attachmentName: req.file ? req.file.originalname : '',
+    aliases: aliases||'', subjectDob: subjectDob||'', address: address||'',
+    sex: sex||'', race: race||'', height: height||'', weight: weight||'',
+    hair: hair||'', eyes: eyes||'', phone: phone||'',
+    subjectDescription: subjectDescription||'',
+    searchProperty: searchProperty||'', itemsToSeize: itemsToSeize||''
   };
   reqs.unshift(record);
   writeJSON(WARRANT_REQUESTS_FILE, reqs);
@@ -2009,7 +2164,7 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
         </span>
         <span style="font-size:0.78rem;color:#6b7280"> · ${fmtDate(r.reviewedAt)}</span>
         ${r.reviewNote ? `<br/><span style="font-size:0.78rem;color:#374151;font-style:italic">"${escapeHtml(r.reviewNote)}"</span>` : ''}
-        ${r.warrantPdfFile ? `<br/><a class="link" style="font-size:0.8rem;font-weight:600" href="/warrant-request-files/${encodeURIComponent(r.warrantPdfFile)}" download="${escapeHtml(r.warrantPdfName||'warrant.pdf')}">⬇ Download Signed Warrant PDF</a>` : ''}
+        ${r.warrantPdfFile ? `<br/><a class="link" style="font-size:0.8rem;font-weight:600" href="/warrant-pdfs/${encodeURIComponent(r.warrantPdfFile)}" download="${escapeHtml(r.warrantPdfName||'warrant.pdf')}">⬇ Download Signed Warrant PDF</a>` : ''}
       </div>` : ''}
     </div>
     <div class="request-actions" style="flex-direction:column;align-items:flex-end;gap:0.5rem;">
@@ -2061,12 +2216,17 @@ app.post('/warrant-requests/:id/approve', requirePerm('clerk'), async (req, res)
   const warrants = readJSON(WARRANTS_FILE);
   const w = {
     id: newId(), warrantNumber: nextWarrantNumber(), type: r.type, subject: r.subject,
-    county: r.county, judge: req.session.user.username, subjectDob: '', subjectDescription: '',
-    address: '', linkedCaseId: '',
+    county: r.county, judge: req.session.user.username,
+    subjectDob: r.subjectDob||'', subjectDescription: r.subjectDescription||'',
+    address: r.searchProperty||r.address||'', linkedCaseId: '',
     status: 'active', issuedBy: req.session.user.username,
     issuedAt: new Date().toISOString().split('T')[0],
     expiresAt: '', executedAt: '',
-    description: `Warrant request ${r.requestNumber} approved.\n\n${r.reason}`
+    description: `Warrant request ${r.requestNumber} approved.\n\n${r.reason}`,
+    aliases: r.aliases||'', sex: r.sex||'', race: r.race||'',
+    height: r.height||'', weight: r.weight||'', hair: r.hair||'', eyes: r.eyes||'',
+    phone: r.phone||'', itemsToSeize: r.itemsToSeize||'',
+    documentType: 'Complaint', agency: 'State of Texas DOJ'
   };
   warrants.unshift(w);
   writeJSON(WARRANTS_FILE, warrants);
@@ -2079,9 +2239,12 @@ app.post('/warrant-requests/:id/approve', requirePerm('clerk'), async (req, res)
 
   const pdfPath = await generateWarrantPdf(w);
   if (pdfPath) {
-    reqs[idx].warrantPdfFile = path.basename(pdfPath);
-    reqs[idx].warrantPdfName = `Warrant-${w.warrantNumber}.pdf`;
-    w.pdfFile = path.basename(pdfPath);
+    const pdfBase = path.basename(pdfPath);
+    const pdfName = `Warrant-${w.warrantNumber}.pdf`;
+    reqs[idx].warrantPdfFile = pdfBase;
+    reqs[idx].warrantPdfName = pdfName;
+    w.pdfFile = pdfBase;
+    w.pdfName = pdfName;
     warrants[0] = w;
     writeJSON(WARRANTS_FILE, warrants);
   }
@@ -2101,8 +2264,10 @@ app.post('/warrant-requests/:id/delete', requirePerm('clerk'), (req, res) => {
     if (fs.existsSync(fp)) fs.unlinkSync(fp);
   }
   if (r.warrantPdfFile) {
-    const fp = path.join(WARRANT_REQ_UPLOADS_DIR, r.warrantPdfFile);
-    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    for (const dir of [WARRANT_PDFS_DIR, WARRANT_REQ_UPLOADS_DIR]) {
+      const fp = path.join(dir, r.warrantPdfFile);
+      if (fs.existsSync(fp)) { fs.unlinkSync(fp); break; }
+    }
   }
   reqs = reqs.filter(x => x.id !== req.params.id);
   writeJSON(WARRANT_REQUESTS_FILE, reqs);
@@ -2125,6 +2290,13 @@ app.post('/warrant-requests/:id/deny', requirePerm('clerk'), (req, res) => {
 app.get('/warrant-request-files/:filename', ensureAuth, (req, res) => {
   const filename = path.basename(req.params.filename);
   const fp = path.join(WARRANT_REQ_UPLOADS_DIR, filename);
+  if (!fs.existsSync(fp)) return res.status(404).send('File not found.');
+  res.download(fp);
+});
+
+app.get('/warrant-pdfs/:filename', ensureAuth, (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const fp = path.join(WARRANT_PDFS_DIR, filename);
   if (!fs.existsSync(fp)) return res.status(404).send('File not found.');
   res.download(fp);
 });

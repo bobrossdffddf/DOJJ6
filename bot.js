@@ -3,7 +3,7 @@ const {
   Client, GatewayIntentBits, REST, Routes,
   SlashCommandBuilder, EmbedBuilder,
   ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-  Events, MessageFlags
+  AttachmentBuilder, Events, MessageFlags
 } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
@@ -16,6 +16,8 @@ const CASES_FILE         = path.join(DATA_DIR, 'cases.json');
 const WARRANTS_FILE      = path.join(DATA_DIR, 'warrants.json');
 const DEFENDANTS_FILE    = path.join(DATA_DIR, 'defendants.json');
 const BOT_CONFIG_FILE    = path.join(DATA_DIR, 'bot_config.json');
+const WARRANT_PDFS_DIR   = path.join(DATA_DIR, 'uploads', 'warrant-pdfs');
+const WARRANT_REQ_DIR    = path.join(DATA_DIR, 'uploads', 'warrant-requests');
 
 function readJSON(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; }
@@ -336,7 +338,20 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const w = readJSON(WARRANTS_FILE).find(x => x.id === interaction.values[0]);
     if (!w) return interaction.editReply({ content: 'Warrant not found. The list may have been updated.' });
-    return interaction.editReply({ embeds: [buildWarrantEmbed(w)] });
+
+    const replyPayload = { embeds: [buildWarrantEmbed(w)] };
+    if (w.pdfFile) {
+      const pdfPath = path.join(WARRANT_PDFS_DIR, w.pdfFile);
+      const legacyPath = path.join(WARRANT_REQ_DIR, w.pdfFile);
+      const resolvedPath = fs.existsSync(pdfPath) ? pdfPath : fs.existsSync(legacyPath) ? legacyPath : null;
+      if (resolvedPath) {
+        try {
+          const attachment = new AttachmentBuilder(resolvedPath, { name: w.pdfName || `Warrant-${w.warrantNumber}.pdf` });
+          replyPayload.files = [attachment];
+        } catch (_) {}
+      }
+    }
+    return interaction.editReply(replyPayload);
   }
 
   // Case dropdown
