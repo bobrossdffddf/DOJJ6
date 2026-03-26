@@ -5,6 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 require('dotenv').config();
 
 const app = express();
@@ -38,6 +39,22 @@ for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE, SUBPOENAS_FILE, DEFEN
 
 function readJSON(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; }
+}
+
+function generateWarrantPdf(warrantData) {
+  return new Promise((resolve) => {
+    const outFile = path.join(WARRANT_REQ_UPLOADS_DIR, `warrant_${warrantData.warrantNumber}_${Date.now()}.pdf`);
+    const py = spawn('python3', [path.join(__dirname, 'generate_warrant.py'), outFile]);
+    py.stdin.write(JSON.stringify(warrantData));
+    py.stdin.end();
+    let err = '';
+    py.stderr.on('data', d => { err += d.toString(); });
+    py.on('close', code => {
+      if (code !== 0) { console.error('[PDF] Failed:', err.trim()); return resolve(null); }
+      resolve(outFile);
+    });
+    py.on('error', e => { console.error('[PDF] spawn error:', e.message); resolve(null); });
+  });
 }
 function writeJSON(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
@@ -1895,6 +1912,7 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
       ${r.reviewedBy ? `<div class="request-reviewer" style="margin-top:0.4rem;font-size:0.8rem;color:#6b7280">
         ${r.status==='approved'?'✅ Signed & approved':'❌ Reviewed'} by <strong>${escapeHtml(r.reviewedBy)}</strong> on ${fmtDate(r.reviewedAt)}
         ${r.reviewNote ? ` — <em>${escapeHtml(r.reviewNote)}</em>` : ''}
+        ${r.warrantPdfFile ? `<br/><a class="link" style="font-weight:600" href="/warrant-request-files/${encodeURIComponent(r.warrantPdfFile)}" download="${escapeHtml(r.warrantPdfName||'warrant.pdf')}">⬇ Download Signed Warrant PDF</a>` : ''}
       </div>` : ''}
       ${r.attachmentName ? `<div style="margin-top:0.3rem;font-size:0.8rem"><a class="link" href="/warrant-request-files/${encodeURIComponent(r.attachmentFile)}" download="${escapeHtml(r.attachmentName)}">📎 ${escapeHtml(r.attachmentName)}</a></div>` : ''}
     </div>
@@ -1991,6 +2009,7 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
         </span>
         <span style="font-size:0.78rem;color:#6b7280"> · ${fmtDate(r.reviewedAt)}</span>
         ${r.reviewNote ? `<br/><span style="font-size:0.78rem;color:#374151;font-style:italic">"${escapeHtml(r.reviewNote)}"</span>` : ''}
+        ${r.warrantPdfFile ? `<br/><a class="link" style="font-size:0.8rem;font-weight:600" href="/warrant-request-files/${encodeURIComponent(r.warrantPdfFile)}" download="${escapeHtml(r.warrantPdfName||'warrant.pdf')}">⬇ Download Signed Warrant PDF</a>` : ''}
       </div>` : ''}
     </div>
     <div class="request-actions" style="flex-direction:column;align-items:flex-end;gap:0.5rem;">
@@ -2004,6 +2023,9 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
           <button class="btn-sm btn-danger" type="submit" style="font-size:0.8rem">Deny</button>
         </form>` : ''}
       ${r.linkedWarrantId ? `<a class="btn-sm" href="/warrants/${r.linkedWarrantId}" style="font-size:0.8rem">View Warrant →</a>` : ''}
+      ${hasPerm(pl,'clerk') ? `<form method="post" action="/warrant-requests/${r.id}/delete" onsubmit="return confirm('Delete this request? This cannot be undone.')">
+        <button class="btn-sm btn-danger" type="submit" style="font-size:0.75rem">Delete</button>
+      </form>` : ''}
     </div>
   </div>`).join('') || '<p class="muted-text" style="padding:1rem">No requests match your filter.</p>';
 
@@ -2029,7 +2051,7 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
   return res.send(layout({ title: 'Warrant Requests — DOJ', body, user: req.session.user, page: 'warrant-requests' }));
 });
 
-app.post('/warrant-requests/:id/approve', requirePerm('clerk'), (req, res) => {
+app.post('/warrant-requests/:id/approve', requirePerm('clerk'), async (req, res) => {
   const reqs = readJSON(WARRANT_REQUESTS_FILE);
   const idx = reqs.findIndex(r => r.id === req.params.id);
   if (idx === -1) return res.status(404).send('Not found.');
@@ -2039,7 +2061,7 @@ app.post('/warrant-requests/:id/approve', requirePerm('clerk'), (req, res) => {
   const warrants = readJSON(WARRANTS_FILE);
   const w = {
     id: newId(), warrantNumber: nextWarrantNumber(), type: r.type, subject: r.subject,
-    county: r.county, judge: '', subjectDob: '', subjectDescription: '',
+    county: r.county, judge: req.session.user.username, subjectDob: '', subjectDescription: '',
     address: '', linkedCaseId: '',
     status: 'active', issuedBy: req.session.user.username,
     issuedAt: new Date().toISOString().split('T')[0],
@@ -2054,10 +2076,37 @@ app.post('/warrant-requests/:id/approve', requirePerm('clerk'), (req, res) => {
   reqs[idx].reviewedAt = new Date().toISOString();
   reqs[idx].reviewNote = note;
   reqs[idx].linkedWarrantId = w.id;
+
+  const pdfPath = await generateWarrantPdf(w);
+  if (pdfPath) {
+    reqs[idx].warrantPdfFile = path.basename(pdfPath);
+    reqs[idx].warrantPdfName = `Warrant-${w.warrantNumber}.pdf`;
+    w.pdfFile = path.basename(pdfPath);
+    warrants[0] = w;
+    writeJSON(WARRANTS_FILE, warrants);
+  }
   writeJSON(WARRANT_REQUESTS_FILE, reqs);
 
-  logActivity('warrant_issued', `Warrant ${w.warrantNumber} approved from request ${r.requestNumber} — ${r.subject}`, req.session.user.username);
+  logActivity('warrant_issued', `Warrant ${w.warrantNumber} signed & approved from request ${r.requestNumber} — ${r.subject}`, req.session.user.username);
   refreshBotEmbeds();
+  return res.redirect('/warrant-requests');
+});
+
+app.post('/warrant-requests/:id/delete', requirePerm('clerk'), (req, res) => {
+  let reqs = readJSON(WARRANT_REQUESTS_FILE);
+  const r = reqs.find(x => x.id === req.params.id);
+  if (!r) return res.status(404).send('Not found.');
+  if (r.attachmentFile) {
+    const fp = path.join(WARRANT_REQ_UPLOADS_DIR, r.attachmentFile);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+  }
+  if (r.warrantPdfFile) {
+    const fp = path.join(WARRANT_REQ_UPLOADS_DIR, r.warrantPdfFile);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+  }
+  reqs = reqs.filter(x => x.id !== req.params.id);
+  writeJSON(WARRANT_REQUESTS_FILE, reqs);
+  logActivity('warrant_deleted', `Warrant request deleted by ${req.session.user.username}`, req.session.user.username);
   return res.redirect('/warrant-requests');
 });
 
