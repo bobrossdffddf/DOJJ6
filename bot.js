@@ -8,12 +8,19 @@ const {
 const fs   = require('fs');
 const path = require('path');
 
-const DATA_DIR      = path.join(__dirname, 'data');
-const CASES_FILE    = path.join(DATA_DIR, 'cases.json');
-const WARRANTS_FILE = path.join(DATA_DIR, 'warrants.json');
+const DATA_DIR        = path.join(__dirname, 'data');
+const CASES_FILE      = path.join(DATA_DIR, 'cases.json');
+const WARRANTS_FILE   = path.join(DATA_DIR, 'warrants.json');
+const BOT_CONFIG_FILE = path.join(DATA_DIR, 'bot_config.json');
 
 function readJSON(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; }
+}
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(BOT_CONFIG_FILE, 'utf8')); } catch { return {}; }
+}
+function writeConfig(data) {
+  fs.writeFileSync(BOT_CONFIG_FILE, JSON.stringify(data, null, 2));
 }
 function fmtDate(d) {
   if (!d) return 'N/A';
@@ -27,7 +34,7 @@ const GUILD_ID  = process.env.DISCORD_GUILD_ID;
 
 if (!TOKEN || !CLIENT_ID) {
   console.warn('[DOJ Bot] Missing DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID — bot will not start.');
-  module.exports = null;
+  module.exports = { refreshEmbeds: async () => {} };
   return;
 }
 
@@ -59,7 +66,7 @@ async function registerCommands() {
   }
 }
 
-// ── Warrant detail embed ──────────────────────────────────────────────────────
+// ── Embed builders ────────────────────────────────────────────────────────────
 function buildWarrantEmbed(w) {
   const statusColor = { active: 0x22c55e, executed: 0x6b7280, expired: 0xef4444, cancelled: 0xef4444 };
   return new EmbedBuilder()
@@ -67,39 +74,38 @@ function buildWarrantEmbed(w) {
     .setColor(statusColor[w.status] || 0x6b7280)
     .setDescription(`**Subject:** ${w.subject}`)
     .addFields(
-      { name: 'Status',         value: cap(w.status),                                   inline: true },
-      { name: 'County',         value: w.county ? `${w.county} County, TX` : 'N/A',     inline: true },
-      { name: 'Issuing Judge',  value: w.judge || 'N/A',                                inline: true },
-      { name: 'Issued By',      value: w.issuedBy || 'N/A',                             inline: true },
-      { name: 'Issue Date',     value: fmtDate(w.issuedAt),                             inline: true },
-      { name: 'Expires',        value: fmtDate(w.expiresAt),                            inline: true },
-      { name: 'DOB',            value: fmtDate(w.subjectDob),                           inline: true },
-      { name: 'Description',    value: w.subjectDescription || 'N/A',                   inline: true },
-      { name: 'Address',        value: w.address || 'N/A',                              inline: true },
+      { name: 'Status',         value: cap(w.status),                               inline: true },
+      { name: 'County',         value: w.county ? `${w.county} County, TX` : 'N/A', inline: true },
+      { name: 'Issuing Judge',  value: w.judge || 'N/A',                            inline: true },
+      { name: 'Issued By',      value: w.issuedBy || 'N/A',                         inline: true },
+      { name: 'Issue Date',     value: fmtDate(w.issuedAt),                         inline: true },
+      { name: 'Expires',        value: fmtDate(w.expiresAt),                        inline: true },
+      { name: 'DOB',            value: fmtDate(w.subjectDob),                       inline: true },
+      { name: 'Description',    value: w.subjectDescription || 'N/A',               inline: true },
+      { name: 'Address',        value: w.address || 'N/A',                          inline: true },
       { name: 'Probable Cause', value: (w.description || 'N/A').slice(0, 1024) }
     )
     .setFooter({ text: 'State of Texas — Department of Justice' })
     .setTimestamp();
 }
 
-// ── Case detail embed ─────────────────────────────────────────────────────────
 function buildCaseEmbed(c) {
   const statusColor = { open: 0x22c55e, investigation: 0x3b82f6, pending: 0xeab308, filed: 0x7c3aed, closed: 0x6b7280, dismissed: 0xef4444 };
   const chargesText = (c.charges || []).slice(0, 5).join('\n') || 'None listed';
   const fields = [
-    { name: 'Status',           value: cap(c.status),                                inline: true },
-    { name: 'Priority',         value: cap(c.priority) || 'Medium',                  inline: true },
-    { name: 'Grade',            value: c.caseGrade || 'N/A',                         inline: true },
-    { name: 'County',           value: c.county ? `${c.county} County, TX` : 'N/A', inline: true },
-    { name: 'Court',            value: c.courtType || 'N/A',                         inline: true },
-    { name: 'Plea',             value: c.plea || 'Not Entered',                      inline: true },
-    { name: 'Verdict',          value: c.verdict || 'Pending',                       inline: true },
-    { name: 'Bond / Bail',      value: c.bondAmount != null && c.bondAmount !== '' ? `$${Number(c.bondAmount).toLocaleString()}` : 'N/A', inline: true },
-    { name: 'Hearing Date',     value: fmtDate(c.courtDate),                         inline: true },
-    { name: 'Presiding Judge',  value: c.presidingJudge || 'N/A',                   inline: true },
-    { name: 'Prosecutor',       value: c.prosecutor || 'N/A',                        inline: true },
-    { name: 'Defense Counsel',  value: c.defenseAttorney || 'N/A',                  inline: true },
-    { name: 'Charges',          value: chargesText },
+    { name: 'Status',          value: cap(c.status),                                inline: true },
+    { name: 'Priority',        value: cap(c.priority) || 'Medium',                  inline: true },
+    { name: 'Grade',           value: c.caseGrade || 'N/A',                         inline: true },
+    { name: 'County',          value: c.county ? `${c.county} County, TX` : 'N/A', inline: true },
+    { name: 'Court',           value: c.courtType || 'N/A',                         inline: true },
+    { name: 'Plea',            value: c.plea || 'Not Entered',                      inline: true },
+    { name: 'Verdict',         value: c.verdict || 'Pending',                       inline: true },
+    { name: 'Bond / Bail',     value: c.bondAmount != null && c.bondAmount !== '' ? `$${Number(c.bondAmount).toLocaleString()}` : 'N/A', inline: true },
+    { name: 'Hearing Date',    value: fmtDate(c.courtDate),                         inline: true },
+    { name: 'Presiding Judge', value: c.presidingJudge || 'N/A',                   inline: true },
+    { name: 'Prosecutor',      value: c.prosecutor || 'N/A',                        inline: true },
+    { name: 'Defense Counsel', value: c.defenseAttorney || 'N/A',                  inline: true },
+    { name: 'Charges',         value: chargesText },
   ];
   if (c.sentence) fields.push({ name: 'Sentence', value: c.sentence.slice(0, 512) });
   return new EmbedBuilder()
@@ -144,95 +150,150 @@ function buildCasesMenu() {
   );
 }
 
+// ── Build the warrant/case header embeds ──────────────────────────────────────
+function buildWarrantHeaderEmbed(count) {
+  return new EmbedBuilder()
+    .setTitle('Active Warrant Lookup')
+    .setDescription(
+      count > 0
+        ? `Select a warrant from the dropdown below to view its full details.\nResults are shown only to you.\n\n**Active Warrants on File:** ${count}`
+        : 'No active warrants on file at this time.'
+    )
+    .setColor(0xef4444)
+    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setTimestamp();
+}
+
+function buildCaseHeaderEmbed(count) {
+  return new EmbedBuilder()
+    .setTitle('Active Case Lookup')
+    .setDescription(
+      count > 0
+        ? `Select a case from the dropdown below to view its full details.\nResults are shown only to you.\n\n**Active Cases on File:** ${count}`
+        : 'No active cases on file at this time.'
+    )
+    .setColor(0x3b82f6)
+    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setTimestamp();
+}
+
 // ── Discord client ────────────────────────────────────────────────────────────
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+let ready = false;
 
 client.once(Events.ClientReady, async () => {
   console.log(`[DOJ Bot] Online as ${client.user.tag}`);
+  ready = true;
   await registerCommands();
 });
 
+// ── Auto-refresh: edit the stored embeds with latest data ─────────────────────
+async function refreshEmbeds() {
+  if (!ready) return;
+  const cfg = readConfig();
+
+  // Refresh warrant embed
+  if (cfg.warrantChannelId && cfg.warrantMessageId) {
+    try {
+      const ch  = await client.channels.fetch(cfg.warrantChannelId);
+      const msg = await ch.messages.fetch(cfg.warrantMessageId);
+      const activeWarrants = readJSON(WARRANTS_FILE).filter(w => w.status === 'active');
+      const row = buildWarrantsMenu();
+      await msg.edit({
+        embeds: [buildWarrantHeaderEmbed(activeWarrants.length)],
+        components: row ? [row] : []
+      });
+    } catch (err) {
+      console.error('[DOJ Bot] Could not refresh warrant embed:', err.message);
+    }
+  }
+
+  // Refresh case embed
+  if (cfg.caseChannelId && cfg.caseMessageId) {
+    try {
+      const ch  = await client.channels.fetch(cfg.caseChannelId);
+      const msg = await ch.messages.fetch(cfg.caseMessageId);
+      const activeCases = readJSON(CASES_FILE).filter(c => !['closed', 'dismissed'].includes(c.status));
+      const row = buildCasesMenu();
+      await msg.edit({
+        embeds: [buildCaseHeaderEmbed(activeCases.length)],
+        components: row ? [row] : []
+      });
+    } catch (err) {
+      console.error('[DOJ Bot] Could not refresh case embed:', err.message);
+    }
+  }
+}
+
+// ── Interaction handler ───────────────────────────────────────────────────────
 client.on(Events.InteractionCreate, async interaction => {
 
-  // /setup slash command
+  // /setup
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const warrantChannel = interaction.options.getChannel('warrant_channel');
     const caseChannel    = interaction.options.getChannel('case_channel');
 
-    const allWarrants    = readJSON(WARRANTS_FILE);
-    const allCases       = readJSON(CASES_FILE);
-    const activeWarrants = allWarrants.filter(w => w.status === 'active');
-    const activeCases    = allCases.filter(c => !['closed', 'dismissed'].includes(c.status));
+    const activeWarrants = readJSON(WARRANTS_FILE).filter(w => w.status === 'active');
+    const activeCases    = readJSON(CASES_FILE).filter(c => !['closed', 'dismissed'].includes(c.status));
 
-    // Build and post warrant embed
-    const warrantRow   = buildWarrantsMenu();
-    const warrantEmbed = new EmbedBuilder()
-      .setTitle('Active Warrant Lookup')
-      .setDescription(
-        activeWarrants.length
-          ? `Select a warrant from the dropdown below to view its full details.\nResults are shown only to you.\n\n**Active Warrants on File:** ${activeWarrants.length}`
-          : 'No active warrants on file at this time.'
-      )
-      .setColor(0xef4444)
-      .setFooter({ text: 'State of Texas — Department of Justice' })
-      .setTimestamp();
-
+    // Post warrant embed and save message ID
+    const warrantRow = buildWarrantsMenu();
+    let warrantMsg;
     try {
-      await warrantChannel.send({
-        embeds: [warrantEmbed],
+      warrantMsg = await warrantChannel.send({
+        embeds: [buildWarrantHeaderEmbed(activeWarrants.length)],
         components: warrantRow ? [warrantRow] : []
       });
     } catch (err) {
-      console.error('[DOJ Bot] Failed to post to warrant channel:', err.message);
+      console.error('[DOJ Bot] Failed to post warrant embed:', err.message);
       return interaction.editReply({ content: `Could not post to <#${warrantChannel.id}>. Make sure the bot has permission to send messages in that channel.` });
     }
 
-    // Build and post case embed
-    const caseRow   = buildCasesMenu();
-    const caseEmbed = new EmbedBuilder()
-      .setTitle('Active Case Lookup')
-      .setDescription(
-        activeCases.length
-          ? `Select a case from the dropdown below to view its full details.\nResults are shown only to you.\n\n**Active Cases on File:** ${activeCases.length}`
-          : 'No active cases on file at this time.'
-      )
-      .setColor(0x3b82f6)
-      .setFooter({ text: 'State of Texas — Department of Justice' })
-      .setTimestamp();
-
+    // Post case embed and save message ID
+    const caseRow = buildCasesMenu();
+    let caseMsg;
     try {
-      await caseChannel.send({
-        embeds: [caseEmbed],
+      caseMsg = await caseChannel.send({
+        embeds: [buildCaseHeaderEmbed(activeCases.length)],
         components: caseRow ? [caseRow] : []
       });
     } catch (err) {
-      console.error('[DOJ Bot] Failed to post to case channel:', err.message);
+      console.error('[DOJ Bot] Failed to post case embed:', err.message);
       return interaction.editReply({ content: `Could not post to <#${caseChannel.id}>. Make sure the bot has permission to send messages in that channel.` });
     }
+
+    // Persist the message IDs so refreshEmbeds() can edit them later
+    writeConfig({
+      warrantChannelId: warrantChannel.id,
+      warrantMessageId: warrantMsg.id,
+      caseChannelId:    caseChannel.id,
+      caseMessageId:    caseMsg.id
+    });
 
     return interaction.editReply({
       content:
         `Setup complete.\n` +
         `Warrant lookup posted in <#${warrantChannel.id}>\n` +
-        `Case lookup posted in <#${caseChannel.id}>`
+        `Case lookup posted in <#${caseChannel.id}>\n\n` +
+        `The embeds will now update automatically whenever a case or warrant is added, edited, or removed.`
     });
   }
 
-  // Warrant dropdown selection
+  // Warrant dropdown
   if (interaction.isStringSelectMenu() && interaction.customId === 'warrant_lookup') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const w = readJSON(WARRANTS_FILE).find(x => x.id === interaction.values[0]);
-    if (!w) return interaction.editReply({ content: 'Warrant not found. The list may have been updated — re-run /setup to refresh.' });
+    if (!w) return interaction.editReply({ content: 'Warrant not found. The list may have been updated.' });
     return interaction.editReply({ embeds: [buildWarrantEmbed(w)] });
   }
 
-  // Case dropdown selection
+  // Case dropdown
   if (interaction.isStringSelectMenu() && interaction.customId === 'case_lookup') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const c = readJSON(CASES_FILE).find(x => x.id === interaction.values[0]);
-    if (!c) return interaction.editReply({ content: 'Case not found. The list may have been updated — re-run /setup to refresh.' });
+    if (!c) return interaction.editReply({ content: 'Case not found. The list may have been updated.' });
     return interaction.editReply({ embeds: [buildCaseEmbed(c)] });
   }
 });
@@ -240,3 +301,5 @@ client.on(Events.InteractionCreate, async interaction => {
 client.login(TOKEN).catch(err => {
   console.error('[DOJ Bot] Login failed:', err.message);
 });
+
+module.exports = { refreshEmbeds };

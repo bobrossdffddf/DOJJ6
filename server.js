@@ -803,6 +803,7 @@ app.post('/cases', requirePerm('lawyer'), (req, res) => {
   cases.unshift(newCase);
   writeJSON(CASES_FILE, cases);
   logActivity('case_created', `Case ${newCase.caseNumber} created — ${title}`, req.session.user.username);
+  refreshBotEmbeds();
   return res.redirect(`/cases/${newCase.id}`);
 });
 
@@ -1038,13 +1039,14 @@ app.post('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
   });
   writeJSON(CASES_FILE, cases);
   logActivity('case_updated', `Case ${cases[idx].caseNumber} updated`, req.session.user.username);
+  refreshBotEmbeds();
   return res.redirect(`/cases/${req.params.id}`);
 });
 
 app.post('/cases/:id/delete', requirePerm('ag'), (req, res) => {
   let cases = readJSON(CASES_FILE);
   const c = cases.find(x=>x.id===req.params.id);
-  if (c) { cases = cases.filter(x=>x.id!==req.params.id); writeJSON(CASES_FILE, cases); logActivity('case_updated', `Case ${c.caseNumber} deleted`, req.session.user.username); }
+  if (c) { cases = cases.filter(x=>x.id!==req.params.id); writeJSON(CASES_FILE, cases); logActivity('case_updated', `Case ${c.caseNumber} deleted`, req.session.user.username); refreshBotEmbeds(); }
   return res.redirect('/cases');
 });
 
@@ -1188,6 +1190,7 @@ app.post('/warrants', requirePerm('lawyer'), (req, res) => {
   warrants.unshift(w);
   writeJSON(WARRANTS_FILE, warrants);
   logActivity('warrant_issued', `${type.charAt(0).toUpperCase()+type.slice(1)} Warrant ${w.warrantNumber} issued for ${subject}`, req.session.user.username);
+  refreshBotEmbeds();
   return res.redirect(`/warrants/${w.id}`);
 });
 
@@ -1259,6 +1262,7 @@ app.post('/warrants/:id/execute', requirePerm('lawyer'), (req, res) => {
   warrants[idx].executedAt = new Date().toISOString();
   writeJSON(WARRANTS_FILE, warrants);
   logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} executed`, req.session.user.username);
+  refreshBotEmbeds();
   return res.redirect(`/warrants/${req.params.id}`);
 });
 
@@ -1269,6 +1273,7 @@ app.post('/warrants/:id/cancel', requirePerm('lawyer'), (req, res) => {
   warrants[idx].status = 'cancelled';
   writeJSON(WARRANTS_FILE, warrants);
   logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} cancelled`, req.session.user.username);
+  refreshBotEmbeds();
   return res.redirect(`/warrants/${req.params.id}`);
 });
 
@@ -1276,6 +1281,7 @@ app.post('/warrants/:id/delete', requirePerm('ag'), (req, res) => {
   let warrants = readJSON(WARRANTS_FILE);
   warrants = warrants.filter(x=>x.id!==req.params.id);
   writeJSON(WARRANTS_FILE, warrants);
+  refreshBotEmbeds();
   return res.redirect('/warrants');
 });
 
@@ -1800,10 +1806,15 @@ app.get('/search', ensureAuth, (req, res) => {
   return res.send(layout({ title: 'Search — DOJ', body, user: req.session.user, page: 'search' }));
 });
 
+let _bot = null;
+function refreshBotEmbeds() {
+  if (_bot) _bot.refreshEmbeds().catch(err => console.error('[DOJ Bot] Refresh error:', err.message));
+}
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`DOJ Portal running at http://0.0.0.0:${PORT}`);
   if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_CLIENT_ID) {
-    try { require('./bot'); } catch (err) { console.error('[DOJ Bot] Failed to start:', err.message); }
+    try { _bot = require('./bot'); } catch (err) { console.error('[DOJ Bot] Failed to start:', err.message); }
   } else {
     console.log('[DOJ Bot] No bot token configured — bot will not start.');
   }

@@ -1,5 +1,19 @@
 [
   {
+    "id": "524f498dff3c3af1",
+    "type": "case_created",
+    "description": "Case DOJ-2026-0001 created — United States V.s BNP Pixel",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T04:12:55.008Z"
+  },
+  {
+    "id": "97b0cb25c4a5ea44",
+    "type": "warrant_issued",
+    "description": "Search Warrant W-2026-0001 issued for Bob Ross",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T04:10:11.440Z"
+  },
+  {
     "id": "261afb46ddeb2706",
     "type": "warrant_executed",
     "description": "Warrant W-2026-0001 executed",
