@@ -1,5 +1,68 @@
 [
   {
+    "id": "108eee590c186e8f",
+    "type": "case_updated",
+    "description": "Case DOJ-2026-0001 deleted",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:32:52.355Z"
+  },
+  {
+    "id": "51bd66ba58f9b2fe",
+    "type": "case_updated",
+    "description": "Case DOJ-2026-0002 deleted",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:32:49.665Z"
+  },
+  {
+    "id": "1336315e97a36275",
+    "type": "case_updated",
+    "description": "Case DOJ-2026-0002 updated",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:32:19.373Z"
+  },
+  {
+    "id": "25817f9df1d5b4e6",
+    "type": "case_updated",
+    "description": "Case DOJ-2026-0002 updated",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:32:07.812Z"
+  },
+  {
+    "id": "6006eb76fcfcb17d",
+    "type": "note_added",
+    "description": "Note added to case DOJ-2026-0002",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:31:14.280Z"
+  },
+  {
+    "id": "435400fb43603d0a",
+    "type": "defendant_added",
+    "description": "Defendant record auto-created: Tim Bradford",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:30:12.698Z"
+  },
+  {
+    "id": "c0b2fe2a581e74b7",
+    "type": "case_created",
+    "description": "Case DOJ-2026-0002 created — United States VS Tim Bradford",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:30:12.697Z"
+  },
+  {
+    "id": "dad7b6aa028bc53d",
+    "type": "case_created",
+    "description": "Case DOJ-2026-0001 created — Bill V.S. Hospital Security",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:28:07.421Z"
+  },
+  {
+    "id": "14bafd7d061ef619",
+    "type": "case_updated",
+    "description": "Case DOJ-2026-0001 deleted",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T05:24:22.576Z"
+  },
+  {
     "id": "6c33c0076065e9c2",
     "type": "warrant_executed",
     "description": "Warrant W-2026-0002 executed",
