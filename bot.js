@@ -7,6 +7,9 @@ const {
 } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
+
+const OWNER_ID = '848356730256883744';
 
 const DATA_DIR        = path.join(__dirname, 'data');
 const CASES_FILE      = path.join(DATA_DIR, 'cases.json');
@@ -178,7 +181,13 @@ function buildCaseHeaderEmbed(count) {
 }
 
 // ── Discord client ────────────────────────────────────────────────────────────
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
 let ready = false;
 
 client.once(Events.ClientReady, async () => {
@@ -295,6 +304,36 @@ client.on(Events.InteractionCreate, async interaction => {
     const c = readJSON(CASES_FILE).find(x => x.id === interaction.values[0]);
     if (!c) return interaction.editReply({ content: 'Case not found. The list may have been updated.' });
     return interaction.editReply({ embeds: [buildCaseEmbed(c)] });
+  }
+});
+
+// ── Text command handler ($git restart, $refresh) ──────────────────────────
+client.on(Events.MessageCreate, async message => {
+  if (message.author.bot) return;
+  if (message.author.id !== OWNER_ID) return;
+
+  const content = message.content.trim();
+
+  if (content === '$git restart') {
+    await message.reply('Pulling latest code and restarting the server…');
+    exec('git pull && npm install --production && systemctl restart doj-portal', (err, stdout, stderr) => {
+      if (err) {
+        message.reply(`Restart failed:\n\`\`\`\n${stderr || err.message}\n\`\`\``).catch(() => {});
+      } else {
+        message.reply(`Done.\n\`\`\`\n${stdout.slice(0, 1800)}\n\`\`\``).catch(() => {});
+      }
+    });
+    return;
+  }
+
+  if (content === '$refresh') {
+    await message.reply('Refreshing Discord embeds…');
+    try {
+      await refreshEmbeds();
+      message.reply('Embeds updated.').catch(() => {});
+    } catch (err) {
+      message.reply(`Refresh failed: ${err.message}`).catch(() => {});
+    }
   }
 });
 

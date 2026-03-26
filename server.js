@@ -719,7 +719,7 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
     <form method="get" class="filter-row">
       <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search cases…"/>
       <select class="input-sm" name="status"><option value="">All statuses</option>${['open','investigation','pending','filed','closed','dismissed'].map(s=>`<option value="${s}" ${status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}</select>
-      <select class="input-sm" name="type"><option value="">All types</option>${['criminal','traffic','civil','internal affairs','juvenile'].map(t=>`<option value="${t}" ${type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select>
+      <select class="input-sm" name="type"><option value="">All types</option>${['criminal','traffic','civil','internal affairs'].map(t=>`<option value="${t}" ${type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select>
       <select class="input-sm" name="priority"><option value="">All priorities</option>${['low','medium','high','critical'].map(p=>`<option value="${p}" ${priority===p?'selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}</select>
       <select class="input-sm" name="county"><option value="">All counties</option>${countyOptions}</select>
       <select class="input-sm" name="grade"><option value="">All grades</option>${gradeOptions}</select>
@@ -749,7 +749,7 @@ app.get('/cases/new', requirePerm('clerk'), (req, res) => {
       <div class="form-grid">
         <div class="form-group"><label>Case Title <span class="req">*</span></label><input class="input" name="title" required placeholder="Brief description of the case"/></div>
         <div class="form-group"><label>Defendant / Subject <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name"/></div>
-        <div class="form-group"><label>Case Type <span class="req">*</span></label><select class="input" name="type" required><option value="criminal">Criminal</option><option value="traffic">Traffic</option><option value="civil">Civil</option><option value="internal affairs">Internal Affairs</option><option value="juvenile">Juvenile</option></select></div>
+        <div class="form-group"><label>Case Type <span class="req">*</span></label><select class="input" name="type" required><option value="criminal">Criminal</option><option value="traffic">Traffic</option><option value="civil">Civil</option><option value="internal affairs">Internal Affairs</option></select></div>
         <div class="form-group"><label>Offense Grade</label><select class="input" name="caseGrade"><option value="">— Select —</option>${gradeOptions}</select></div>
         <div class="form-group"><label>Priority</label><select class="input" name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
         <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
@@ -804,6 +804,22 @@ app.post('/cases', requirePerm('clerk'), (req, res) => {
   cases.unshift(newCase);
   writeJSON(CASES_FILE, cases);
   logActivity('case_created', `Case ${newCase.caseNumber} created — ${title}`, req.session.user.username);
+
+  if (!['civil', 'internal affairs'].includes(type)) {
+    const defendants = readJSON(DEFENDANTS_FILE);
+    const exists = defendants.some(d => d.fullName.toLowerCase() === subject.toLowerCase());
+    if (!exists) {
+      defendants.unshift({
+        id: newId(), fullName: subject, dob: '',
+        race: '', height: '', weight: '', hair: '', eyes: '',
+        address: '', city: '', county: county||'', phone: '', notes: '',
+        createdBy: req.session.user.username, createdAt: new Date().toISOString()
+      });
+      writeJSON(DEFENDANTS_FILE, defendants);
+      logActivity('defendant_added', `Defendant record auto-created: ${subject}`, req.session.user.username);
+    }
+  }
+
   refreshBotEmbeds();
   return res.redirect(`/cases/${newCase.id}`);
 });
@@ -1295,7 +1311,7 @@ app.get('/defendants', requirePerm('clerk'), (req, res) => {
   const { q='' } = req.query;
   const pl = req.session.user.permLevel;
   let defendants = readJSON(DEFENDANTS_FILE);
-  if (q) defendants = defendants.filter(d => [d.fullName, d.dob, d.address, d.id_number, d.notes].join(' ').toLowerCase().includes(q.toLowerCase()));
+  if (q) defendants = defendants.filter(d => [d.fullName, d.dob, d.address, d.notes].join(' ').toLowerCase().includes(q.toLowerCase()));
 
   const rows = defendants.map(d => `
   <a class="table-row-link" href="/defendants/${d.id}" style="--cols:4">
@@ -1333,7 +1349,6 @@ app.get('/defendants/new', requirePerm('lawyer'), (req, res) => {
       <div class="form-grid">
         <div class="form-group"><label>Full Legal Name <span class="req">*</span></label><input class="input" name="fullName" required/></div>
         <div class="form-group"><label>Date of Birth</label><input class="input" type="date" name="dob"/></div>
-        <div class="form-group"><label>Texas DL / ID Number</label><input class="input" name="id_number" placeholder="Texas Driver's License #"/></div>
         <div class="form-group"><label>Race / Ethnicity</label><input class="input" name="race" placeholder="As noted in official records"/></div>
         <div class="form-group"><label>Height</label><input class="input" name="height" placeholder="e.g. 5'10&quot;"/></div>
         <div class="form-group"><label>Weight</label><input class="input" name="weight" placeholder="e.g. 180 lbs"/></div>
@@ -1352,11 +1367,11 @@ app.get('/defendants/new', requirePerm('lawyer'), (req, res) => {
 });
 
 app.post('/defendants', requirePerm('lawyer'), (req, res) => {
-  const { fullName, dob, id_number, race, height, weight, hair, eyes, address, city, county, phone, notes } = req.body;
+  const { fullName, dob, race, height, weight, hair, eyes, address, city, county, phone, notes } = req.body;
   if (!fullName) return res.status(400).send('Name is required.');
   const defendants = readJSON(DEFENDANTS_FILE);
   const d = {
-    id: newId(), fullName, dob: dob||'', id_number: id_number||'',
+    id: newId(), fullName, dob: dob||'',
     race: race||'', height: height||'', weight: weight||'',
     hair: hair||'', eyes: eyes||'', address: address||'',
     city: city||'', county: county||'', phone: phone||'', notes: notes||'',
@@ -1405,7 +1420,6 @@ app.get('/defendants/:id', requirePerm('clerk'), (req, res) => {
       <dl class="detail-list">
         <dt>Full Name</dt><dd><strong>${escapeHtml(d.fullName)}</strong></dd>
         <dt>Date of Birth</dt><dd>${fmtDate(d.dob)}</dd>
-        <dt>TX DL / ID #</dt><dd>${escapeHtml(d.id_number||'—')}</dd>
         <dt>Race / Ethnicity</dt><dd>${escapeHtml(d.race||'—')}</dd>
         <dt>Height</dt><dd>${escapeHtml(d.height||'—')}</dd>
         <dt>Weight</dt><dd>${escapeHtml(d.weight||'—')}</dd>
@@ -1767,7 +1781,7 @@ app.get('/search', ensureAuth, (req, res) => {
     if (hasPerm(pl,'clerk')) {
       caseResults = readJSON(CASES_FILE).filter(c => [c.caseNumber,c.title,c.subject,c.assignedOfficer,c.prosecutor,c.defenseAttorney,c.notes,...(c.charges||[])].join(' ').toLowerCase().includes(lq)).slice(0,10);
       subpoenaResults = readJSON(SUBPOENAS_FILE).filter(s => [s.subpoenaNumber,s.recipient,s.purpose].join(' ').toLowerCase().includes(lq)).slice(0,5);
-      defendantResults = readJSON(DEFENDANTS_FILE).filter(d => [d.fullName,d.address,d.id_number].join(' ').toLowerCase().includes(lq)).slice(0,5);
+      defendantResults = readJSON(DEFENDANTS_FILE).filter(d => [d.fullName,d.address].join(' ').toLowerCase().includes(lq)).slice(0,5);
     }
     const warrants = readJSON(WARRANTS_FILE);
     const searchableWarrants = hasPerm(pl,'clerk') ? warrants : warrants.filter(w=>w.status==='active');
