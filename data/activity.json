@@ -1,5 +1,19 @@
 [
   {
+    "id": "779b5d473d0f5cf4",
+    "type": "case_updated",
+    "description": "Case DOJ-2026-0001 deleted",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T02:56:38.101Z"
+  },
+  {
+    "id": "3cd88a8c5abb5275",
+    "type": "file_uploaded",
+    "description": "\"Copy of Arrest Warrant and Return - Justice Court Criminal Case (1) (1) (1).docx.pdf\" uploaded",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T02:51:51.449Z"
+  },
+  {
     "id": "8f77f13625a079b5",
     "type": "warrant_executed",
     "description": "Warrant W-2026-0001 marked as executed",
