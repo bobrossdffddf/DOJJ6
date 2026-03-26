@@ -38,14 +38,13 @@ cd /opt/doj-portal
 npm install --production
 ```
 
-Replace the GitHub URL with wherever you store this project. Alternatively, copy the project files directly using `scp` or an SFTP client.
+Replace the GitHub URL with wherever you store this project. Alternatively, copy files directly using `scp` or an SFTP client.
 
 ---
 
 ## 4. Create the environment file
 
 ```bash
-cp .env.example .env   # if it exists, otherwise:
 nano /opt/doj-portal/.env
 ```
 
@@ -72,11 +71,10 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ## 5. Ensure the data directory exists
 
 ```bash
-mkdir -p /opt/doj-portal/data
 mkdir -p /opt/doj-portal/data/uploads
 ```
 
-The app will create JSON data files automatically on first run.
+The app creates JSON data files automatically on first run.
 
 ---
 
@@ -114,26 +112,105 @@ systemctl start doj-portal
 systemctl status doj-portal
 ```
 
-View logs at any time:
+View live logs:
 ```bash
 journalctl -u doj-portal -f
 ```
 
 ---
 
-## 7. Set up a reverse proxy with Nginx (for HTTPS)
+## 7. Expose the portal — Option A: Cloudflare Tunnel (Recommended)
 
-Install Nginx:
+Cloudflare Tunnel is the easiest option. It gives you HTTPS automatically with no port forwarding, no firewall rules, and no certificate management. You only need a free Cloudflare account and a domain pointed to Cloudflare.
+
+### 7a. Install cloudflared
+
+```bash
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+dpkg -i cloudflared.deb
+```
+
+### 7b. Log in and create the tunnel
+
+```bash
+cloudflared tunnel login
+```
+
+This opens a browser link. Authorize the domain you want to use. Then:
+
+```bash
+cloudflared tunnel create doj-portal
+```
+
+This creates the tunnel and saves credentials to `/root/.cloudflared/`.
+
+### 7c. Create the tunnel config
+
+```bash
+nano /root/.cloudflared/config.yml
+```
+
+Paste (replace `YOUR_TUNNEL_ID` with the ID printed in the previous step, and `yourdomain.com` with your domain):
+```yaml
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /root/.cloudflared/YOUR_TUNNEL_ID.json
+
+ingress:
+  - hostname: yourdomain.com
+    service: http://localhost:5000
+  - service: http_status:404
+```
+
+### 7d. Route your domain through the tunnel
+
+```bash
+cloudflared tunnel route dns doj-portal yourdomain.com
+```
+
+This automatically creates a CNAME record in Cloudflare DNS pointing your domain to the tunnel.
+
+### 7e. Run the tunnel as a systemd service
+
+```bash
+cloudflared service install
+systemctl enable cloudflared
+systemctl start cloudflared
+systemctl status cloudflared
+```
+
+### 7f. Update your environment file
+
+Update `.env` to use your Cloudflare domain:
+```
+DISCORD_REDIRECT_URI=https://yourdomain.com/auth/callback
+```
+
+Then restart the portal:
+```bash
+systemctl restart doj-portal
+```
+
+Also add the redirect URI in the Discord Developer Portal under **OAuth2 → Redirects**.
+
+---
+
+## 7. Expose the portal — Option B: Nginx + Let's Encrypt
+
+Use this if you prefer a traditional reverse proxy with a static IP and open ports (80/443).
+
+### Install Nginx
+
 ```bash
 apt install -y nginx
 ```
 
-Create the site config:
+### Create the site config
+
 ```bash
 nano /etc/nginx/sites-available/doj-portal
 ```
 
-Paste (replace `yourdomain.com` with your actual domain or VM IP):
+Paste (replace `yourdomain.com`):
 ```nginx
 server {
     listen 80;
@@ -162,46 +239,38 @@ nginx -t
 systemctl reload nginx
 ```
 
----
-
-## 8. Add HTTPS with Let's Encrypt (optional but recommended)
+### Add HTTPS with Let's Encrypt
 
 ```bash
 apt install -y certbot python3-certbot-nginx
 certbot --nginx -d yourdomain.com
 ```
 
-Certbot will automatically edit the Nginx config and set up auto-renewal.
-
-Update your `.env` to use the HTTPS URL:
-```
-DISCORD_REDIRECT_URI=https://yourdomain.com/auth/callback
-```
-
-Also update the Discord app's OAuth2 redirect URIs at https://discord.com/developers/applications to match.
+Certbot will edit the config and set up auto-renewal automatically.
 
 ---
 
-## 9. Discord Developer Portal configuration
+## 8. Discord Developer Portal configuration
 
 1. Go to https://discord.com/developers/applications
 2. Select your app
 3. Under **OAuth2 → Redirects**, add: `https://yourdomain.com/auth/callback`
-4. Under **Bot**, ensure the bot is invited to your server with:
+4. Under **Bot**, ensure the bot is in your server with:
    - `applications.commands` scope
    - `bot` scope
    - Permissions: View Channels, Send Messages, Read Message History
 
-Bot invite URL format:
+Bot invite URL:
 ```
 https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=68608&scope=bot+applications.commands&guild_id=YOUR_GUILD_ID
 ```
 
 ---
 
-## 10. Firewall (optional)
+## 9. Firewall (Option B / Nginx only)
 
-Allow only HTTP, HTTPS, and SSH:
+If using Nginx, open ports 80 and 443. With Cloudflare Tunnel you do not need to open any ports.
+
 ```bash
 apt install -y ufw
 ufw allow OpenSSH
@@ -215,7 +284,7 @@ ufw enable
 
 ```bash
 cd /opt/doj-portal
-git pull          # if using git
+git pull
 npm install --production
 systemctl restart doj-portal
 ```
@@ -225,9 +294,10 @@ systemctl restart doj-portal
 ## Proxmox-specific tips
 
 - **LXC vs VM:** A Debian 12 LXC container works fine and uses less overhead than a full VM.
-- **Static IP:** Set a static IP on the container/VM inside Proxmox or via DHCP reservation so Nginx and Discord OAuth always resolve correctly.
-- **Backups:** The entire `data/` folder is where all records live. Back it up with Proxmox Backup Server or a simple cron job:
+- **Static IP:** Set a static IP on the container/VM so your config stays consistent after reboots. With Cloudflare Tunnel you can use a dynamic IP — the tunnel handles it.
+- **Backups:** The entire `data/` folder is where all records live. Back it up with Proxmox Backup Server or a cron job:
   ```bash
   0 3 * * * tar -czf /root/doj-backup-$(date +\%F).tar.gz /opt/doj-portal/data
   ```
-- **Multiple nodes:** The app uses local JSON files, so it must run on a single node. If you want HA, point a shared network volume (NFS/CephFS) at `/opt/doj-portal/data` and run the app on one node at a time.
+- **Multiple nodes:** The app uses local JSON files, so it must run on a single node. For HA, mount a shared NFS/CephFS volume at `/opt/doj-portal/data` and keep the app running on one node at a time.
+- **Cloudflare Tunnel on LXC:** Works without any special network configuration. The tunnel outbound-only connection means you never need to touch your Proxmox host's firewall or your router.

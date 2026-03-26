@@ -564,11 +564,12 @@ app.get('/dashboard', ensureAuth, (req, res) => {
       ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ View Cases</span>' : ''}
       ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ Create & Edit Cases</span>' : ''}
       ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ Documents</span>' : ''}
-      ${hasPerm(pl,'lawyer')  ? '<span class="perm-chip perm-yes">✓ Issue Warrants</span>' : ''}
+      ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ Issue Warrants</span>' : ''}
+      ${hasPerm(pl,'lawyer')  ? '<span class="perm-chip perm-yes">✓ Issue Subpoenas</span>' : ''}
       ${hasPerm(pl,'ag')      ? '<span class="perm-chip perm-yes">✓ Full Admin</span>' : ''}
       ${!hasPerm(pl,'clerk')  ? '<span class="perm-chip perm-no">✗ Cases</span>' : ''}
       ${!hasPerm(pl,'clerk')  ? '<span class="perm-chip perm-no">✗ Documents</span>' : ''}
-      ${!hasPerm(pl,'lawyer') ? '<span class="perm-chip perm-no">✗ Create/Edit</span>' : ''}
+      ${!hasPerm(pl,'lawyer') ? '<span class="perm-chip perm-no">✗ Issue Subpoenas</span>' : ''}
     </div>
   </div>`;
 
@@ -632,8 +633,8 @@ app.get('/dashboard', ensureAuth, (req, res) => {
       <p class="page-sub">Signed in as ${escapeHtml(user.username)} · State of Texas DOJ</p>
     </div>
     <div class="btn-group">
-      ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/cases/new">+ New Case</a>` : ''}
-      ${hasPerm(pl,'lawyer') ? `<a class="btn-sm" href="/warrants/new">Issue Warrant</a>` : ''}
+      ${hasPerm(pl,'clerk') ? `<a class="btn-primary" href="/cases/new">+ New Case</a>` : ''}
+      ${hasPerm(pl,'clerk') ? `<a class="btn-sm" href="/warrants/new">Issue Warrant</a>` : ''}
     </div>
   </div>
 
@@ -653,7 +654,7 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     <div class="card">
       <div class="card-header">
         <span class="card-title">Recent Cases</span>
-        ${hasPerm(pl,'lawyer') ? `<a class="btn-sm" href="/cases/new">+ New</a>` : ''}
+        ${hasPerm(pl,'clerk') ? `<a class="btn-sm" href="/cases/new">+ New</a>` : ''}
       </div>
       <div class="table-rows">${recentCases}</div>
       <a class="card-footer-link" href="/cases">View all cases →</a>
@@ -712,7 +713,7 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
   const body = `
   <div class="page-header row-between">
     <div><h1 class="page-title">Cases</h1><p class="page-sub">${cases.length} case${cases.length!==1?'s':''} found.</p></div>
-    ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/cases/new">+ New Case</a>` : ''}
+    ${hasPerm(pl,'clerk') ? `<a class="btn-primary" href="/cases/new">+ New Case</a>` : ''}
   </div>
   <div class="card" style="margin-bottom:1rem">
     <form method="get" class="filter-row">
@@ -814,8 +815,9 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
   const pl = req.session.user.permLevel;
   const linkedWarrants  = readJSON(WARRANTS_FILE).filter(w => w.linkedCaseId === c.id);
   const linkedSubpoenas = readJSON(SUBPOENAS_FILE).filter(s => s.linkedCaseId === c.id);
-  const canWrite  = hasPerm(pl, 'lawyer');
-  const canDelete = hasPerm(pl, 'ag');
+  const canEditCase = hasPerm(pl, 'clerk');
+  const canWrite    = hasPerm(pl, 'lawyer');
+  const canDelete   = hasPerm(pl, 'ag');
 
   const chargesHtml = (c.charges||[]).map(ch=>`<span class="tag">${escapeHtml(ch)}</span>`).join('') || '<span class="muted-text">None listed</span>';
   const notesHtml = (c.caseNotes||[]).map(n=>`
@@ -854,9 +856,9 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
       </div>
     </div>
     <div class="btn-group">
-      ${canWrite  ? `<a class="btn-sm" href="/cases/${c.id}/edit">Edit Case</a>` : ''}
-      ${canWrite  ? `<a class="btn-sm" href="/warrants/new?caseId=${c.id}">Issue Warrant</a>` : ''}
-      ${canWrite  ? `<a class="btn-sm" href="/subpoenas/new?caseId=${c.id}">Issue Subpoena</a>` : ''}
+      ${canEditCase ? `<a class="btn-sm" href="/cases/${c.id}/edit">Edit Case</a>` : ''}
+      ${canEditCase ? `<a class="btn-sm" href="/warrants/new?caseId=${c.id}">Issue Warrant</a>` : ''}
+      ${canWrite    ? `<a class="btn-sm" href="/subpoenas/new?caseId=${c.id}">Issue Subpoena</a>` : ''}
       ${canDelete ? `<form method="post" action="/cases/${c.id}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Permanently delete this case?')">Delete</button></form>` : ''}
     </div>
   </div>
@@ -909,7 +911,7 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
   <div class="card">
     <div class="card-header">
       <span class="card-title">Linked Warrants</span>
-      ${canWrite ? `<a class="btn-sm" href="/warrants/new?caseId=${c.id}">+ Issue Warrant</a>` : ''}
+      ${canEditCase ? `<a class="btn-sm" href="/warrants/new?caseId=${c.id}">+ Issue Warrant</a>` : ''}
     </div>
     <div class="table-header" style="grid-template-columns:1fr 1fr 1fr 1fr"><span>Warrant #</span><span>Type</span><span>Status</span><span>Issued</span></div>
     <div class="table-rows" style="--cols:4">${warrantRows}</div>
@@ -1127,7 +1129,7 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
   const body = `
   <div class="page-header row-between">
     <div><h1 class="page-title">Warrants</h1><p class="page-sub">${warrants.length} warrant${warrants.length!==1?'s':''} found.</p></div>
-    ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/warrants/new">+ Issue Warrant</a>` : ''}
+    ${hasPerm(pl,'clerk') ? `<a class="btn-primary" href="/warrants/new">+ Issue Warrant</a>` : ''}
   </div>
   ${citizenNotice}
   <div class="card" style="margin-bottom:1rem">
@@ -1146,7 +1148,7 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
   return res.send(layout({ title: 'Warrants — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
-app.get('/warrants/new', requirePerm('lawyer'), (req, res) => {
+app.get('/warrants/new', requirePerm('clerk'), (req, res) => {
   const { caseId='' } = req.query;
   const cases = readJSON(CASES_FILE);
   const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
@@ -1174,7 +1176,7 @@ app.get('/warrants/new', requirePerm('lawyer'), (req, res) => {
   return res.send(layout({ title: 'Issue Warrant — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
-app.post('/warrants', requirePerm('lawyer'), (req, res) => {
+app.post('/warrants', requirePerm('clerk'), (req, res) => {
   const { type, subject, county, judge, subjectDob, subjectDescription, address, linkedCaseId, issuedAt, expiresAt, description } = req.body;
   if (!type || !subject || !county || !judge || !description) return res.status(400).send('Missing required fields.');
   const warrants = readJSON(WARRANTS_FILE);
