@@ -10,12 +10,15 @@
     "subjectDescription": "5\"9 White Brown hair",
     "address": "333 Line lane",
     "linkedCaseId": "",
-    "status": "active",
+    "status": "executed",
     "issuedBy": "justawacko_",
     "issuedAt": "2026-03-26",
     "expiresAt": "",
-    "executedAt": "",
-    "description": "The defendant in this case killed someone while at hospital for no reason"
+    "executedAt": "2026-03-26T17:13:40.209Z",
+    "description": "The defendant in this case killed someone while at hospital for no reason",
+    "executedBy": "justawacko_",
+    "returnFile": "1774545220160_warrant_W-2026-0001_1774542530527.pdf",
+    "returnFileName": "warrant_W-2026-0001_1774542530527.pdf"
   },
   {
     "id": "7bd88586fde2a2fc",
@@ -28,7 +31,7 @@
     "subjectDescription": "",
     "address": "",
     "linkedCaseId": "",
-    "status": "active",
+    "status": "cancelled",
     "issuedBy": "justawacko_",
     "issuedAt": "2026-03-26",
     "expiresAt": "",
