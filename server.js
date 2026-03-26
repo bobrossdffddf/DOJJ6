@@ -1800,4 +1800,11 @@ app.get('/search', ensureAuth, (req, res) => {
   return res.send(layout({ title: 'Search — DOJ', body, user: req.session.user, page: 'search' }));
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`DOJ Portal running at http://0.0.0.0:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`DOJ Portal running at http://0.0.0.0:${PORT}`);
+  if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_CLIENT_ID) {
+    try { require('./bot'); } catch (err) { console.error('[DOJ Bot] Failed to start:', err.message); }
+  } else {
+    console.log('[DOJ Bot] No bot token configured — bot will not start.');
+  }
+});
