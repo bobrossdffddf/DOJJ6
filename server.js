@@ -28,8 +28,10 @@ const ACTIVITY_FILE          = path.join(DATA_DIR, 'activity.json');
 const SUBPOENAS_FILE         = path.join(DATA_DIR, 'subpoenas.json');
 const DEFENDANTS_FILE        = path.join(DATA_DIR, 'defendants.json');
 const WARRANT_REQUESTS_FILE  = path.join(DATA_DIR, 'warrant_requests.json');
+const WARRANT_REQ_UPLOADS_DIR = path.join(UPLOADS_DIR, 'warrant-requests');
+const WARRANT_RETURN_UPLOADS_DIR = path.join(UPLOADS_DIR, 'warrant-returns');
 
-for (const d of [DATA_DIR, UPLOADS_DIR])
+for (const d of [DATA_DIR, UPLOADS_DIR, WARRANT_REQ_UPLOADS_DIR, WARRANT_RETURN_UPLOADS_DIR])
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE, SUBPOENAS_FILE, DEFENDANTS_FILE, WARRANT_REQUESTS_FILE])
   if (!fs.existsSync(f)) fs.writeFileSync(f, '[]');
@@ -62,6 +64,24 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage, limits: { fileSize: 250 * 1024 * 1024 } });
+
+const wrUploadStorage = multer.diskStorage({
+  destination(req, file, cb) { cb(null, WARRANT_REQ_UPLOADS_DIR); },
+  filename(req, file, cb) {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    cb(null, `${Date.now()}_${safe}`);
+  }
+});
+const wrUpload = multer({ storage: wrUploadStorage, limits: { fileSize: 250 * 1024 * 1024 } });
+
+const wrReturnStorage = multer.diskStorage({
+  destination(req, file, cb) { cb(null, WARRANT_RETURN_UPLOADS_DIR); },
+  filename(req, file, cb) {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    cb(null, `${Date.now()}_${safe}`);
+  }
+});
+const wrReturnUpload = multer({ storage: wrReturnStorage, limits: { fileSize: 250 * 1024 * 1024 } });
 
 // ════════════════════════════════════════════════════════════════════════════
 // ROLE / PERMISSION SYSTEM
@@ -1265,7 +1285,8 @@ app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
       </div>
     </div>
     <div class="btn-group">
-      ${canWrite && w.status==='active' ? `<form method="post" action="/warrants/${w.id}/execute" style="display:inline"><button class="btn-primary" type="submit">Mark Executed</button></form>` : ''}
+      ${canWrite && w.status==='active' ? `
+        <button class="btn-primary" type="button" onclick="document.getElementById('executeForm').style.display=document.getElementById('executeForm').style.display==='none'?'block':'none'">Mark Executed</button>` : ''}
       ${canWrite && w.status==='active' ? `<form method="post" action="/warrants/${w.id}/cancel" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Cancel this warrant?')">Cancel</button></form>` : ''}
       ${canDelete ? `<form method="post" action="/warrants/${w.id}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete this warrant?')">Delete</button></form>` : ''}
     </div>
@@ -1298,18 +1319,50 @@ app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
   <div class="card">
     <div class="card-title" style="margin-bottom:0.75rem">Probable Cause / Description</div>
     <p class="case-notes-text">${escapeHtml(w.description||'').replace(/\n/g,'<br/>')}</p>
-  </div>`;
+  </div>
+  ${canWrite && w.status==='active' ? `
+  <div id="executeForm" style="display:none">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:0.75rem">Warrant Return — Mark as Executed</div>
+      <p class="muted-text" style="margin-bottom:1rem;font-size:0.875rem">Optionally attach the signed warrant return document (up to 250 MB) before confirming execution.</p>
+      <form method="post" action="/warrants/${w.id}/execute" enctype="multipart/form-data">
+        <div class="form-group" style="margin-bottom:1rem">
+          <label>Return Document <span class="muted-text" style="font-weight:400;font-size:0.8rem">(optional — max 250 MB)</span></label>
+          <input class="input" type="file" name="returnDoc" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.mp4,.mov,.zip"/>
+          <p class="muted-text" style="font-size:0.78rem;margin-top:0.3rem">Accepted: PDF, Word, images, video, ZIP — up to 250 MB</p>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit" onclick="return confirm('Confirm execution of this warrant?')">Confirm Execution</button>
+          <button class="btn-sm" type="button" onclick="document.getElementById('executeForm').style.display='none'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>` : ''}
+  ${(w.status==='executed' || w.returnFile) ? `
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Warrant Return</div>
+    <dl class="detail-list">
+      ${w.executedBy ? `<dt>Executed By</dt><dd><strong>${escapeHtml(w.executedBy)}</strong></dd>` : ''}
+      ${w.executedAt ? `<dt>Executed At</dt><dd>${fmtDate(w.executedAt)}</dd>` : ''}
+      ${w.returnFile ? `<dt>Return Document</dt><dd><a class="link" href="/warrant-return-files/${encodeURIComponent(w.returnFile)}" download="${escapeHtml(w.returnFileName||w.returnFile)}">📎 ${escapeHtml(w.returnFileName||w.returnFile)}</a></dd>` : '<dt>Return Document</dt><dd class="muted-text">No document attached</dd>'}
+    </dl>
+  </div>` : ''}`;
   return res.send(layout({ title: `${w.warrantNumber} — DOJ`, body, user: req.session.user, page: 'warrants' }));
 });
 
-app.post('/warrants/:id/execute', requirePerm('lawyer'), (req, res) => {
+app.post('/warrants/:id/execute', requirePerm('lawyer'), wrReturnUpload.single('returnDoc'), (req, res) => {
   const warrants = readJSON(WARRANTS_FILE);
   const idx = warrants.findIndex(x=>x.id===req.params.id);
   if (idx===-1) return res.status(404).send('Not found.');
   warrants[idx].status = 'executed';
   warrants[idx].executedAt = new Date().toISOString();
+  warrants[idx].executedBy = req.session.user.username;
+  if (req.file) {
+    warrants[idx].returnFile = req.file.filename;
+    warrants[idx].returnFileName = req.file.originalname;
+  }
   writeJSON(WARRANTS_FILE, warrants);
-  logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} executed`, req.session.user.username);
+  logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} executed by ${req.session.user.username}`, req.session.user.username);
   refreshBotEmbeds();
   return res.redirect(`/warrants/${req.params.id}`);
 });
@@ -1839,17 +1892,24 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
       <div class="request-subject">${escapeHtml(r.subject)} <span class="mono muted-text">${escapeHtml(r.requestNumber)}</span></div>
       <div class="request-meta">${escapeHtml(r.type.charAt(0).toUpperCase()+r.type.slice(1))} Warrant · ${escapeHtml(r.county)} County · Filed ${fmtDate(r.createdAt)}</div>
       <div class="request-reason">${escapeHtml((r.reason||'').slice(0,200))}</div>
+      ${r.reviewedBy ? `<div class="request-reviewer" style="margin-top:0.4rem;font-size:0.8rem;color:#6b7280">
+        ${r.status==='approved'?'✅ Signed & approved':'❌ Reviewed'} by <strong>${escapeHtml(r.reviewedBy)}</strong> on ${fmtDate(r.reviewedAt)}
+        ${r.reviewNote ? ` — <em>${escapeHtml(r.reviewNote)}</em>` : ''}
+      </div>` : ''}
+      ${r.attachmentName ? `<div style="margin-top:0.3rem;font-size:0.8rem"><a class="link" href="/warrant-request-files/${encodeURIComponent(r.attachmentFile)}" download="${escapeHtml(r.attachmentName)}">📎 ${escapeHtml(r.attachmentName)}</a></div>` : ''}
     </div>
     <div class="request-actions">${badge(r.status, WR_STATUS_CLASS[r.status]||'badge-gray')}</div>
   </div>`).join('') || '<p class="muted-text" style="padding:0.5rem 0">You have not submitted any warrant requests yet.</p>';
 
+  const submitted = req.query.submitted === '1';
   const body = `
+  ${submitted ? `<div class="alert-success" style="margin-bottom:1rem;padding:0.75rem 1rem;background:#d1fae5;border:1px solid #6ee7b7;border-radius:0.5rem;color:#065f46">Your warrant request has been submitted and is pending review.</div>` : ''}
   <div class="page-header">
     <h1 class="page-title">Request a Warrant</h1>
-    <p class="page-sub">Submit a warrant request to the Department of Justice. A clerk will review your request.</p>
+    <p class="page-sub">Submit a warrant request to the Department of Justice. A clerk or judge will review and sign your request.</p>
   </div>
   <div class="card">
-    <form method="post" action="/warrant-request">
+    <form method="post" action="/warrant-request" enctype="multipart/form-data">
       <div class="section-label">Warrant Details</div>
       <div class="form-grid">
         <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of the person you are reporting"/></div>
@@ -1864,6 +1924,12 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
       </div>
       <div class="section-label">Description</div>
       <div class="form-group"><label>Reason / Description <span class="req">*</span></label><textarea class="input" name="reason" rows="5" required placeholder="Describe the incident, why you believe a warrant is needed, any evidence or witnesses…"></textarea></div>
+      <div class="section-label">Supporting Document <span class="muted-text" style="font-weight:400;font-size:0.8rem">(optional — max 250 MB)</span></div>
+      <div class="form-group">
+        <label>Attach File</label>
+        <input class="input" type="file" name="attachment" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.mp4,.mov,.zip"/>
+        <p class="muted-text" style="font-size:0.78rem;margin-top:0.3rem">Accepted: PDF, Word, images, video, ZIP — up to 250 MB</p>
+      </div>
       <div class="form-actions"><button class="btn-primary" type="submit">Submit Request</button></div>
     </form>
   </div>
@@ -1875,12 +1941,12 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
   return res.send(layout({ title: 'Request Warrant — DOJ', body, user, page: 'warrant-request' }));
 });
 
-app.post('/warrant-request', ensureAuth, (req, res) => {
+app.post('/warrant-request', ensureAuth, wrUpload.single('attachment'), (req, res) => {
   const { subject, type, county, incidentDate, requesterDisplay, contact, reason } = req.body;
   if (!subject || !type || !county || !reason) return res.status(400).send('Missing required fields.');
   const user = req.session.user;
   const reqs = readJSON(WARRANT_REQUESTS_FILE);
-  reqs.unshift({
+  const record = {
     id: newId(),
     requestNumber: nextWarrantRequestNumber(),
     requesterId: user.id,
@@ -1890,14 +1956,17 @@ app.post('/warrant-request', ensureAuth, (req, res) => {
     subject, type, county, incidentDate: incidentDate||'',
     reason, status: 'pending',
     createdAt: new Date().toISOString(),
-    reviewedBy: '', reviewedAt: '', reviewNote: '', linkedWarrantId: ''
-  });
+    reviewedBy: '', reviewedAt: '', reviewNote: '', linkedWarrantId: '',
+    attachmentFile: req.file ? req.file.filename : '',
+    attachmentName: req.file ? req.file.originalname : ''
+  };
+  reqs.unshift(record);
   writeJSON(WARRANT_REQUESTS_FILE, reqs);
-  logActivity('warrant_issued', `Warrant request ${reqs[0].requestNumber} submitted for ${subject}`, user.username);
+  logActivity('warrant_issued', `Warrant request ${record.requestNumber} submitted for ${subject}`, user.username);
   return res.redirect('/warrant-request?submitted=1');
 });
 
-// Clerk warrant request management
+// Clerk/Judge warrant request management
 app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
   const { status='' } = req.query;
   const pl = req.session.user.permLevel;
@@ -1914,13 +1983,21 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
         · ${escapeHtml(r.county)} County · Submitted by <strong>${escapeHtml(r.requesterDisplay||r.requesterUsername)}</strong> · ${fmtDate(r.createdAt)}
       </div>
       <div class="request-reason">${escapeHtml((r.reason||'').slice(0,300))}</div>
-      ${r.reviewNote ? `<p style="margin-top:0.4rem;font-size:0.8rem;color:#6b7280"><em>Review note: ${escapeHtml(r.reviewNote)}</em></p>` : ''}
+      ${r.attachmentName ? `<div style="margin-top:0.4rem;font-size:0.8rem"><a class="link" href="/warrant-request-files/${encodeURIComponent(r.attachmentFile)}" download="${escapeHtml(r.attachmentName)}">📎 ${escapeHtml(r.attachmentName)}</a></div>` : ''}
+      ${r.reviewedBy ? `
+      <div style="margin-top:0.6rem;padding:0.5rem 0.75rem;background:${r.status==='approved'?'#f0fdf4':'#fef2f2'};border-radius:0.4rem;border:1px solid ${r.status==='approved'?'#bbf7d0':'#fecaca'}">
+        <span style="font-size:0.8rem;font-weight:600;color:${r.status==='approved'?'#166534':'#991b1b'}">
+          ${r.status==='approved'?'✅ Signed &amp; Approved':'❌ Denied'} by ${escapeHtml(r.reviewedBy)}
+        </span>
+        <span style="font-size:0.78rem;color:#6b7280"> · ${fmtDate(r.reviewedAt)}</span>
+        ${r.reviewNote ? `<br/><span style="font-size:0.78rem;color:#374151;font-style:italic">"${escapeHtml(r.reviewNote)}"</span>` : ''}
+      </div>` : ''}
     </div>
     <div class="request-actions" style="flex-direction:column;align-items:flex-end;gap:0.5rem;">
       ${r.status==='pending' && hasPerm(pl,'clerk') ? `
         <form method="post" action="/warrant-requests/${r.id}/approve" style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
-          <input class="input-sm" name="note" placeholder="Note (optional)" style="width:160px"/>
-          <button class="btn-primary" type="submit" style="font-size:0.8rem;padding:0.3rem 0.75rem">Approve</button>
+          <input class="input-sm" name="note" placeholder="Signing note (optional)" style="width:160px"/>
+          <button class="btn-primary" type="submit" style="font-size:0.8rem;padding:0.3rem 0.75rem">Sign &amp; Approve</button>
         </form>
         <form method="post" action="/warrant-requests/${r.id}/deny" style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
           <input class="input-sm" name="note" placeholder="Reason for denial" style="width:160px"/>
@@ -1935,7 +2012,7 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
   <div class="page-header row-between">
     <div>
       <h1 class="page-title">Warrant Requests</h1>
-      <p class="page-sub">${reqs.length} request${reqs.length!==1?'s':''} · ${pending} pending</p>
+      <p class="page-sub">${reqs.length} request${reqs.length!==1?'s':''} · ${pending} pending review &amp; signature</p>
     </div>
   </div>
   <div class="card" style="margin-bottom:1rem">
@@ -1996,6 +2073,20 @@ app.post('/warrant-requests/:id/deny', requirePerm('clerk'), (req, res) => {
   return res.redirect('/warrant-requests');
 });
 
+app.get('/warrant-request-files/:filename', ensureAuth, (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const fp = path.join(WARRANT_REQ_UPLOADS_DIR, filename);
+  if (!fs.existsSync(fp)) return res.status(404).send('File not found.');
+  res.download(fp);
+});
+
+app.get('/warrant-return-files/:filename', requirePerm('clerk'), (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const fp = path.join(WARRANT_RETURN_UPLOADS_DIR, filename);
+  if (!fs.existsSync(fp)) return res.status(404).send('File not found.');
+  res.download(fp);
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // SEARCH
 // ════════════════════════════════════════════════════════════════════════════
@@ -2052,8 +2143,16 @@ app.get('/search', ensureAuth, (req, res) => {
 });
 
 let _bot = null;
+let _lastBotErrLog = 0;
 function refreshBotEmbeds() {
-  if (_bot) _bot.refreshEmbeds().catch(err => console.error('[DOJ Bot] Refresh error:', err.message));
+  if (!_bot) return;
+  _bot.refreshEmbeds().catch(err => {
+    const now = Date.now();
+    if (now - _lastBotErrLog > 60000) {
+      console.error('[DOJ Bot] Refresh error:', err.message);
+      _lastBotErrLog = now;
+    }
+  });
 }
 
 app.listen(PORT, '0.0.0.0', () => {
