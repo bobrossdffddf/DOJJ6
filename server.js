@@ -430,6 +430,7 @@ function layout({ title, body, user, page = '' }) {
     <a class="subnav-link${page==='warrant-request'?' active':''}" href="/warrant-request">Request Warrant</a>
     ${canManageRequests  ? `<a class="subnav-link${page==='warrant-requests'?' active':''}" href="/warrant-requests">Warrant Requests</a>` : ''}
     <a class="subnav-link${page==='search'?' active':''}" href="/search">Search</a>
+    <a class="subnav-link${page==='bar-registry'?' active':''}" href="/bar-registry">Bar Registry</a>
   </div>` : '';
 
   return `<!doctype html>
@@ -2361,6 +2362,23 @@ app.get('/search', ensureAuth, (req, res) => {
   ${lq&&total===0?`<div class="empty-state"><p>No results for "<strong>${escapeHtml(q)}</strong>".</p></div>`:''}
   ${!lq?`<div class="empty-state"><p>Enter a search term above to search across all records.</p></div>`:''}`;
   return res.send(layout({ title: 'Search — DOJ', body, user: req.session.user, page: 'search' }));
+});
+
+app.get('/bar-registry', ensureAuth, (req, res) => {
+  const body = `
+  <div class="page-header">
+    <h1 class="page-title">Bar Registry</h1>
+    <p class="muted-text" style="margin-top:0.25rem">Licensed attorneys and bar members of the State of Texas</p>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <iframe
+      src="https://docs.google.com/spreadsheets/d/e/2PACX-1vQH4hzbfY2VpMAZTnjy-bmNF2JgqiJHTBvyv4IzgAcl-0L7oJyholyOZ-YNggPKsh8DAzH2V3lHiPEc/pubhtml?widget=true&headers=false"
+      style="width:100%;height:75vh;border:none;display:block;"
+      title="Bar Registry"
+      loading="lazy"
+    ></iframe>
+  </div>`;
+  return res.send(layout({ title: 'Bar Registry — DOJ', body, user: req.session.user, page: 'bar-registry' }));
 });
 
 let _bot = null;
