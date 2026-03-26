@@ -1,5 +1,19 @@
 [
   {
+    "id": "261afb46ddeb2706",
+    "type": "warrant_executed",
+    "description": "Warrant W-2026-0001 executed",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T04:06:01.457Z"
+  },
+  {
+    "id": "043099490020f802",
+    "type": "warrant_issued",
+    "description": "Arrest Warrant W-2026-0001 issued for e",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T04:05:17.229Z"
+  },
+  {
     "id": "779b5d473d0f5cf4",
     "type": "case_updated",
     "description": "Case DOJ-2026-0001 deleted",

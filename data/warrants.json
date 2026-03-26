@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "69b8787f27ed4376",
+    "warrantNumber": "W-2026-0001",
+    "type": "arrest",
+    "subject": "e",
+    "county": "Dallas",
+    "judge": "e",
+    "subjectDob": "3333-03-31",
+    "subjectDescription": "3",
+    "address": "3",
+    "linkedCaseId": "",
+    "status": "executed",
+    "issuedBy": "justawacko_",
+    "issuedAt": "2026-03-26",
+    "expiresAt": "0033-03-03",
+    "executedAt": "2026-03-26T04:06:01.457Z",
+    "description": "333"
+  }
+]
