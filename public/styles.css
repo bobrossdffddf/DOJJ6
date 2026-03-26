@@ -457,6 +457,59 @@ code {
 .perm-yes { background: #dcfce7; color: #15803d; }
 .perm-no  { background: #f3f4f6; color: #9ca3af; }
 
+/* ── Three column detail grid ── */
+.detail-grid.three-col { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .detail-grid.three-col { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .detail-grid.three-col { grid-template-columns: 1fr; } }
+
+/* ── Section labels ── */
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #9ca3af;
+  margin: 1.25rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+.section-label:first-child { margin-top: 0; }
+
+/* ── Login seal ── */
+.login-seal {
+  font-size: 2.5rem;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Calendar events ── */
+.calendar-event {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f3f4f6;
+  align-items: flex-start;
+}
+.calendar-event:last-child { border-bottom: none; }
+.cal-event-date {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #374151;
+  min-width: 80px;
+  padding-top: 0.1rem;
+}
+.cal-event-body { flex: 1; min-width: 0; }
+.cal-event-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #111827;
+  margin-bottom: 0.25rem;
+}
+.cal-event-title:hover { color: #374151; text-decoration: underline; }
+.cal-event-meta { font-size: 0.8rem; color: #9ca3af; display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+
 /* ── Access denied ── */
 .access-denied {
   background: #fff;

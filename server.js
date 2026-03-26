@@ -20,15 +20,17 @@ const config = {
 };
 
 // ── Data paths ──────────────────────────────────────────────────────────────
-const DATA_DIR      = path.join(__dirname, 'data');
-const UPLOADS_DIR   = path.join(DATA_DIR, 'uploads');
-const CASES_FILE    = path.join(DATA_DIR, 'cases.json');
-const WARRANTS_FILE = path.join(DATA_DIR, 'warrants.json');
-const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.json');
+const DATA_DIR        = path.join(__dirname, 'data');
+const UPLOADS_DIR     = path.join(DATA_DIR, 'uploads');
+const CASES_FILE      = path.join(DATA_DIR, 'cases.json');
+const WARRANTS_FILE   = path.join(DATA_DIR, 'warrants.json');
+const ACTIVITY_FILE   = path.join(DATA_DIR, 'activity.json');
+const SUBPOENAS_FILE  = path.join(DATA_DIR, 'subpoenas.json');
+const DEFENDANTS_FILE = path.join(DATA_DIR, 'defendants.json');
 
 for (const d of [DATA_DIR, UPLOADS_DIR])
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE])
+for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE, SUBPOENAS_FILE, DEFENDANTS_FILE])
   if (!fs.existsSync(f)) fs.writeFileSync(f, '[]');
 
 function readJSON(file) {
@@ -64,16 +66,6 @@ const upload = multer({ storage, limits: { fileSize: 250 * 1024 * 1024 } });
 // ROLE / PERMISSION SYSTEM
 // ════════════════════════════════════════════════════════════════════════════
 
-/*
-  Tiers (each inherits from the ones below):
-    citizen  – can view active warrants & run warrant searches
-    clerk    – citizen + view/upload/download documents, view cases, add case notes
-    lawyer   – clerk + create/edit cases, issue/execute warrants
-    ag       – lawyer + delete cases/warrants, full admin
-
-  Role detection works by matching the member's Discord role names (case-insensitive)
-  against keyword lists. First match wins; list order is: ag → lawyer → clerk → citizen.
-*/
 const PERM = { citizen: 0, clerk: 1, lawyer: 2, ag: 3 };
 
 const ROLE_KEYWORDS = {
@@ -94,8 +86,7 @@ function hasPerm(userLevel, required) {
   return (PERM[userLevel] ?? 0) >= (PERM[required] ?? 0);
 }
 
-// ── Discord permission helpers ────────────────────────────────────────────────
-const VIEW_CHANNEL = 1n << 10n;
+const VIEW_CHANNEL  = 1n << 10n;
 const ADMINISTRATOR = 1n << 3n;
 
 function canViewChannel(channel, userId, memberRoleIds, guildId) {
@@ -144,7 +135,7 @@ async function fetchMemberInfo(userId) {
       }
     }
   }
-  if (isAdmin) roleNames.unshift('Attorney General'); // Discord admins → AG tier
+  if (isAdmin) roleNames.unshift('Attorney General');
   return { roleIds: member.roles || [], roleNames, isAdmin };
 }
 
@@ -210,34 +201,135 @@ function nextWarrantNumber() {
   const nums = warrants.map(w => { const m = String(w.warrantNumber||'').match(/(\d+)$/); return m?parseInt(m[1]):0; });
   return `W-${year}-${String((nums.length?Math.max(...nums):0)+1).padStart(4,'0')}`;
 }
+function nextSubpoenaNumber() {
+  const subs = readJSON(SUBPOENAS_FILE);
+  const year = new Date().getFullYear();
+  const nums = subs.map(s => { const m = String(s.subpoenaNumber||'').match(/(\d+)$/); return m?parseInt(m[1]):0; });
+  return `SP-${year}-${String((nums.length?Math.max(...nums):0)+1).padStart(4,'0')}`;
+}
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
-const CASE_STATUS_CLASS = { open:'badge-green', investigation:'badge-blue', pending:'badge-yellow', filed:'badge-purple', closed:'badge-gray', dismissed:'badge-red' };
+const CASE_STATUS_CLASS    = { open:'badge-green', investigation:'badge-blue', pending:'badge-yellow', filed:'badge-purple', closed:'badge-gray', dismissed:'badge-red' };
 const WARRANT_STATUS_CLASS = { active:'badge-green', executed:'badge-gray', expired:'badge-red', cancelled:'badge-red' };
-const PRIORITY_CLASS = { low:'badge-gray', medium:'badge-yellow', high:'badge-orange', critical:'badge-red' };
-const PERM_LEVEL_CLASS = { citizen:'badge-gray', clerk:'badge-blue', lawyer:'badge-purple', ag:'badge-green' };
-const PERM_LEVEL_LABEL = { citizen:'Citizen / Texan', clerk:'Court Clerk', lawyer:'Lawyer / ADA', ag:'Attorney General' };
+const PRIORITY_CLASS       = { low:'badge-gray', medium:'badge-yellow', high:'badge-orange', critical:'badge-red' };
+const PERM_LEVEL_CLASS     = { citizen:'badge-gray', clerk:'badge-blue', lawyer:'badge-purple', ag:'badge-green' };
+const PERM_LEVEL_LABEL     = { citizen:'Citizen', clerk:'Court Clerk', lawyer:'Attorney / ADA', ag:'Attorney General' };
+const SUBPOENA_STATUS_CLASS = { pending:'badge-yellow', served:'badge-green', failed:'badge-red', quashed:'badge-gray' };
+const PLEA_CLASS           = { 'not entered':'badge-gray', 'not guilty':'badge-green', 'guilty':'badge-red', 'no contest':'badge-yellow' };
+const VERDICT_CLASS        = { pending:'badge-yellow', 'not guilty':'badge-green', guilty:'badge-red', dismissed:'badge-gray', mistrial:'badge-orange' };
 
 function badge(text, cls='badge-gray') {
   return `<span class="badge ${cls}">${escapeHtml(text)}</span>`;
 }
 
-// ── Charges list ──────────────────────────────────────────────────────────────
+// ── Texas-specific data ────────────────────────────────────────────────────────
+const TEXAS_COUNTIES = [
+  'Anderson','Andrews','Angelina','Aransas','Archer','Armstrong','Atascosa','Austin','Bailey','Bandera',
+  'Bastrop','Baylor','Bee','Bell','Bexar','Blanco','Borden','Bosque','Bowie','Brazoria','Brazos',
+  'Brewster','Briscoe','Brooks','Brown','Burleson','Burnet','Caldwell','Calhoun','Cameron','Camp',
+  'Carson','Cass','Castro','Chambers','Cherokee','Childress','Clay','Cochran','Coke','Coleman',
+  'Collin','Collingsworth','Colorado','Comal','Comanche','Concho','Cooke','Corpus Christi',
+  'Dallas','Denton','El Paso','Fort Bend','Galveston','Harris','Hays','Hidalgo','Jefferson',
+  'Lubbock','McLennan','Montgomery','Nueces','Tarrant','Travis','Webb','Williamson'
+];
+
+const COURT_TYPES = [
+  'Texas District Court',
+  'Texas County Court at Law',
+  'Texas Criminal District Court',
+  'Municipal Court',
+  'Justice of the Peace Court',
+  'Court of Criminal Appeals',
+  'Texas Court of Appeals'
+];
+
+const CASE_GRADES = [
+  'Capital Felony',
+  '1st Degree Felony',
+  '2nd Degree Felony',
+  '3rd Degree Felony',
+  'State Jail Felony',
+  'Class A Misdemeanor',
+  'Class B Misdemeanor',
+  'Class C Misdemeanor',
+  'Civil'
+];
+
+// ── Texas Penal Code charges ──────────────────────────────────────────────────
 const COMMON_CHARGES = [
-  'Murder (PC 187)','Attempted Murder (PC 664/187)','Manslaughter (PC 192)',
-  'Assault (PC 240)','Battery (PC 242)','Assault with Deadly Weapon (PC 245)',
-  'Robbery (PC 211)','Grand Theft Auto (PC 487[d])','Burglary (PC 459)',
-  'Arson (PC 451)','Kidnapping (PC 207)','Carjacking (PC 215)',
-  'Drug Possession (HS 11350)','Drug Trafficking (HS 11352)',
-  'Possession of Firearm by Felon (PC 29800)','Brandishing a Weapon (PC 417)',
-  'Money Laundering (PC 186.10)','Extortion (PC 518)','Vandalism (PC 594)',
-  'Trespassing (PC 602)','Resisting Arrest (PC 148[a])','Obstruction of Justice (PC 148.9)',
-  'Public Intoxication (PC 647[f])','Possession of Illegal Weapon (PC 12020)',
-  'Reckless Driving (VC 23103)','DUI (VC 23152)','Evading Police (VC 2800.1)',
-  'Felony Evading (VC 2800.2)','Hit and Run (VC 20001)','Street Racing (VC 23109)',
-  'Speeding (VC 22350)','Driving with Suspended License (VC 14601)',
-  'False Imprisonment (PC 236)','Perjury (PC 118)','Bribery (PC 67)',
-  'Fraud (PC 532)','Identity Theft (PC 530.5)'
+  // Homicide - Texas Penal Code Title 5
+  'Murder (TPC § 19.02)',
+  'Capital Murder (TPC § 19.03)',
+  'Manslaughter (TPC § 19.04)',
+  'Criminally Negligent Homicide (TPC § 19.05)',
+  // Assault - Title 5
+  'Assault (TPC § 22.01)',
+  'Aggravated Assault (TPC § 22.02)',
+  'Deadly Conduct (TPC § 22.05)',
+  'Terroristic Threat (TPC § 22.07)',
+  'Sexual Assault (TPC § 22.011)',
+  'Aggravated Sexual Assault (TPC § 22.021)',
+  // Kidnapping - Title 4
+  'Kidnapping (TPC § 20.03)',
+  'Aggravated Kidnapping (TPC § 20.04)',
+  'Unlawful Restraint (TPC § 20.02)',
+  // Robbery - Title 7
+  'Robbery (TPC § 29.02)',
+  'Aggravated Robbery (TPC § 29.03)',
+  // Property crimes - Title 7
+  'Theft (TPC § 31.03)',
+  'Burglary of a Habitation (TPC § 30.02)',
+  'Burglary of a Building (TPC § 30.02)',
+  'Burglary of a Vehicle (TPC § 30.04)',
+  'Criminal Trespass (TPC § 30.05)',
+  'Unauthorized Use of Motor Vehicle (TPC § 31.07)',
+  'Arson (TPC § 28.02)',
+  'Criminal Mischief (TPC § 28.03)',
+  // Drug offenses - Texas Health & Safety Code
+  'Possession of Controlled Substance (THSC § 481.115)',
+  'Manufacture/Delivery of Controlled Substance (THSC § 481.112)',
+  'Possession of Marijuana (THSC § 481.121)',
+  'Delivery of Marijuana (THSC § 481.120)',
+  'Possession of Drug Paraphernalia (THSC § 481.125)',
+  // Weapons - Title 10
+  'Unlawful Carrying of Weapon (TPC § 46.02)',
+  'Felon in Possession of Firearm (TPC § 46.04)',
+  'Unlawful Transfer of Firearm (TPC § 46.06)',
+  'Prohibited Weapons (TPC § 46.05)',
+  // DWI / Traffic - Transportation Code
+  'Driving While Intoxicated (TPC § 49.04)',
+  'DWI with Child Passenger (TPC § 49.045)',
+  'Intoxication Assault (TPC § 49.07)',
+  'Intoxication Manslaughter (TPC § 49.08)',
+  'Evading Arrest — Vehicle (TPC § 38.04)',
+  'Evading Arrest — Foot (TPC § 38.04)',
+  'Reckless Driving (Tex. Transp. Code § 545.401)',
+  'Street Racing (Tex. Transp. Code § 545.420)',
+  'Driving While License Invalid (Tex. Transp. Code § 521.457)',
+  // Obstruction / Government
+  'Resisting Arrest (TPC § 38.03)',
+  'Tampering with Evidence (TPC § 37.09)',
+  'Tampering with Witness (TPC § 36.05)',
+  'Perjury (TPC § 37.02)',
+  'False Report to Police (TPC § 37.08)',
+  'Retaliation (TPC § 36.06)',
+  // Financial crimes
+  'Money Laundering (TPC § 34.02)',
+  'Bribery (TPC § 36.02)',
+  'Forgery (TPC § 32.21)',
+  'Fraud (TPC § 32.46)',
+  'Identity Theft (TPC § 32.51)',
+  'Credit Card Abuse (TPC § 32.31)',
+  // Public order
+  'Public Intoxication (TPC § 49.02)',
+  'Disorderly Conduct (TPC § 42.01)',
+  'Riot (TPC § 42.02)',
+  'Prostitution (TPC § 43.02)',
+  'Gambling Promotion (TPC § 47.03)',
+  // Organized crime
+  'Engaging in Organized Criminal Activity (TPC § 71.02)',
+  'Conspiracy (TPC § 15.02)',
+  'Criminal Solicitation (TPC § 15.03)'
 ];
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -264,7 +356,7 @@ function requirePerm(level) {
         <p class="muted-text">If you believe this is wrong, contact your supervisor — your Discord role controls your access.</p>
         <a class="btn-primary" href="/dashboard">Return to Dashboard</a>
       </div>`;
-      return res.status(403).send(layout({ title: 'Access Denied — DOJ RP', body, user: req.session.user, page: '' }));
+      return res.status(403).send(layout({ title: 'Access Denied — DOJ', body, user: req.session.user, page: '' }));
     }
     next();
   };
@@ -276,13 +368,18 @@ function layout({ title, body, user, page = '' }) {
   const canCases    = user && hasPerm(pl, 'clerk');
   const canDocs     = user && hasPerm(pl, 'clerk');
   const canWarrants = user && hasPerm(pl, 'citizen');
+  const canSubpoenas = user && hasPerm(pl, 'clerk');
+  const canDefendants = user && hasPerm(pl, 'clerk');
 
   const nav = user ? `
   <div class="subnav">
     <a class="subnav-link${page==='dashboard'?' active':''}" href="/dashboard">Dashboard</a>
-    ${canWarrants ? `<a class="subnav-link${page==='warrants'?' active':''}" href="/warrants">Warrants</a>` : ''}
-    ${canCases    ? `<a class="subnav-link${page==='cases'?' active':''}" href="/cases">Cases</a>` : ''}
-    ${canDocs     ? `<a class="subnav-link${page==='channels'?' active':''}" href="/channels">Documents</a>` : ''}
+    ${canWarrants   ? `<a class="subnav-link${page==='warrants'?' active':''}" href="/warrants">Warrants</a>` : ''}
+    ${canCases      ? `<a class="subnav-link${page==='cases'?' active':''}" href="/cases">Cases</a>` : ''}
+    ${canDefendants ? `<a class="subnav-link${page==='defendants'?' active':''}" href="/defendants">Defendants</a>` : ''}
+    ${canSubpoenas  ? `<a class="subnav-link${page==='subpoenas'?' active':''}" href="/subpoenas">Subpoenas</a>` : ''}
+    ${canDocs       ? `<a class="subnav-link${page==='channels'?' active':''}" href="/channels">Documents</a>` : ''}
+    ${canCases      ? `<a class="subnav-link${page==='calendar'?' active':''}" href="/calendar">Calendar</a>` : ''}
     <a class="subnav-link${page==='search'?' active':''}" href="/search">Search</a>
   </div>` : '';
 
@@ -296,7 +393,7 @@ function layout({ title, body, user, page = '' }) {
 </head>
 <body>
   <nav class="topbar">
-    <a class="topbar-brand" href="${user?'/dashboard':'/'}">DOJ RP Portal</a>
+    <a class="topbar-brand" href="${user?'/dashboard':'/'}">DOJ Portal</a>
     <div class="topbar-right">
       ${user ? `
         ${badge(PERM_LEVEL_LABEL[pl]||pl, PERM_LEVEL_CLASS[pl]||'badge-gray')}
@@ -329,6 +426,22 @@ app.use(session({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── API (for Discord bot) ─────────────────────────────────────────────────────
+app.get('/api/cases', (req, res) => {
+  const key = req.headers['x-bot-key'];
+  if (key !== process.env.BOT_API_KEY && process.env.BOT_API_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  const cases = readJSON(CASES_FILE);
+  const status = req.query.status || 'open';
+  res.json(status === 'all' ? cases : cases.filter(c => !['closed','dismissed'].includes(c.status)));
+});
+
+app.get('/api/warrants', (req, res) => {
+  const key = req.headers['x-bot-key'];
+  if (key !== process.env.BOT_API_KEY && process.env.BOT_API_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  const warrants = readJSON(WARRANTS_FILE);
+  res.json(warrants.filter(w => w.status === 'active'));
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════════════════════════════════════════
@@ -343,18 +456,18 @@ app.get('/', (req, res) => {
   const body = `
   <div class="login-wrap">
     <div class="login-card">
-      <h1 class="login-title">DOJ RP Portal</h1>
-      <p class="login-sub">Sign in with your Discord account. Access is determined by your server role.</p>
+      <div class="login-seal">⚖</div>
+      <h1 class="login-title">DOJ Portal</h1>
+      <p class="login-sub">State of Texas — Department of Justice<br/>Sign in with your Discord account. Access is determined by your server role.</p>
       ${ready
         ? `<a class="btn-discord" href="${authUrl(state)}">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
             Sign in with Discord
-          </a>
-`
+          </a>`
         : `<div class="alert-box">Discord credentials not configured. Set <code>DISCORD_CLIENT_ID</code> and <code>DISCORD_CLIENT_SECRET</code>.</div>`}
     </div>
   </div>`;
-  return res.send(layout({ title: 'Sign In — DOJ RP Portal', body, user: null }));
+  return res.send(layout({ title: 'Sign In — DOJ Portal', body, user: null }));
 });
 
 app.get('/auth/discord/callback', async (req, res) => {
@@ -385,7 +498,6 @@ app.get('/auth/discord/callback', async (req, res) => {
         return res.status(403).send('Access denied: not a member of the configured server.');
     }
 
-    // Fetch roles from guild and determine permission level
     let permLevel = 'citizen';
     let roleNames = [];
     if (config.botToken && config.guildId) {
@@ -395,7 +507,6 @@ app.get('/auth/discord/callback', async (req, res) => {
         permLevel = info.isAdmin ? 'ag' : detectPermLevel(roleNames);
       } catch { /* bot unavailable, default to citizen */ }
     } else {
-      // No bot token configured — grant full access for setup purposes
       permLevel = 'ag';
       roleNames = ['Attorney General'];
     }
@@ -408,7 +519,6 @@ app.get('/auth/discord/callback', async (req, res) => {
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
-// Refresh roles mid-session (user visits /refresh-roles)
 app.get('/refresh-roles', ensureAuth, async (req, res) => {
   if (config.botToken && config.guildId) {
     try {
@@ -427,15 +537,16 @@ app.get('/refresh-roles', ensureAuth, async (req, res) => {
 app.get('/dashboard', ensureAuth, (req, res) => {
   const user = req.session.user;
   const pl = user.permLevel;
-  const cases    = readJSON(CASES_FILE);
-  const warrants = readJSON(WARRANTS_FILE);
-  const activity = readJSON(ACTIVITY_FILE).slice(0, 10);
+  const cases     = readJSON(CASES_FILE);
+  const warrants  = readJSON(WARRANTS_FILE);
+  const subpoenas = readJSON(SUBPOENAS_FILE);
+  const activity  = readJSON(ACTIVITY_FILE).slice(0, 12);
 
-  const openCases      = cases.filter(c => !['closed','dismissed'].includes(c.status)).length;
-  const activeWarrants = warrants.filter(w => w.status === 'active').length;
-  const totalDocs      = getTotalFileCount();
+  const openCases       = cases.filter(c => !['closed','dismissed'].includes(c.status)).length;
+  const activeWarrants  = warrants.filter(w => w.status === 'active').length;
+  const pendingSubpoenas = subpoenas.filter(s => s.status === 'pending').length;
+  const totalDocs       = getTotalFileCount();
 
-  // Role display
   const roleTagsHtml = (user.roleNames || []).length
     ? user.roleNames.map(r => `<span class="role-chip">${escapeHtml(r)}</span>`).join('')
     : '<span class="muted-text">No roles detected</span>';
@@ -459,26 +570,25 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     </div>
   </div>`;
 
-  // Citizen view — just warrant lookup
   if (pl === 'citizen') {
     const body = `
     <div class="page-header">
       <h1 class="page-title">Dashboard</h1>
-      <p class="page-sub">Signed in as ${escapeHtml(user.username)}.</p>
+      <p class="page-sub">Signed in as ${escapeHtml(user.username)} · State of Texas DOJ</p>
     </div>
     ${permBanner}
     <div class="card">
       <div class="card-title" style="margin-bottom:0.75rem">Warrant Lookup</div>
       <p style="font-size:0.9rem;color:#6b7280;margin-bottom:1rem">Search for active warrants by subject name or warrant number.</p>
       <form method="get" action="/warrants" class="filter-row">
-        <input class="input" name="q" placeholder="Search by name or warrant number…" style="flex:1"/>
+        <input class="input" name="q" placeholder="Name or warrant number…" style="flex:1"/>
         <button class="btn-primary" type="submit">Search Warrants</button>
       </form>
     </div>
     <div class="alert-box" style="margin-top:0">
-      Your Discord role gives you <strong>Citizen</strong> access. If you are DOJ staff, make sure you have the correct role assigned in the Discord server, then <a href="/refresh-roles" style="color:#92400e;text-decoration:underline">click here to refresh your access</a>.
+      Your Discord role gives you <strong>Citizen</strong> access. If you are DOJ staff, ensure you have the correct role in the Discord server, then <a href="/refresh-roles" style="color:#92400e;text-decoration:underline">click here to refresh your access</a>.
     </div>`;
-    return res.send(layout({ title: 'Dashboard — DOJ RP', body, user, page: 'dashboard' }));
+    return res.send(layout({ title: 'Dashboard — DOJ', body, user, page: 'dashboard' }));
   }
 
   const activityRows = activity.map(a => `
@@ -491,17 +601,33 @@ app.get('/dashboard', ensureAuth, (req, res) => {
   </div>`).join('') || '<p class="muted-text" style="padding:1rem">No recent activity.</p>';
 
   const recentCases = cases.slice(0,5).map(c => `
-  <a class="table-row-link" href="/cases/${c.id}">
+  <a class="table-row-link" href="/cases/${c.id}" style="--cols:3">
     <span class="tr-cell mono">${escapeHtml(c.caseNumber)}</span>
     <span class="tr-cell fw">${escapeHtml(c.title)}</span>
     <span class="tr-cell">${badge(c.status, CASE_STATUS_CLASS[c.status]||'badge-gray')}</span>
   </a>`).join('') || '<p class="muted-text" style="padding:1rem">No cases yet.</p>';
 
+  // Upcoming court dates
+  const today = new Date();
+  const upcoming = cases
+    .filter(c => c.courtDate && new Date(c.courtDate) >= today)
+    .sort((a,b) => new Date(a.courtDate)-new Date(b.courtDate))
+    .slice(0,4);
+
+  const upcomingRows = upcoming.map(c => `
+  <div class="activity-row">
+    <span class="activity-icon" style="background:#dbeafe;color:#1d4ed8">DATE</span>
+    <div class="activity-info">
+      <span class="activity-desc"><a href="/cases/${c.id}" style="color:#111827">${escapeHtml(c.caseNumber)} — ${escapeHtml(c.title)}</a></span>
+      <span class="activity-meta">${fmtDate(c.courtDate)} · ${escapeHtml(c.courtType||'Court')} · ${escapeHtml(c.county||'')} County</span>
+    </div>
+  </div>`).join('') || '<p class="muted-text" style="padding:1rem">No upcoming hearings.</p>';
+
   const body = `
   <div class="page-header row-between">
     <div>
       <h1 class="page-title">Dashboard</h1>
-      <p class="page-sub">Signed in as ${escapeHtml(user.username)}.</p>
+      <p class="page-sub">Signed in as ${escapeHtml(user.username)} · State of Texas DOJ</p>
     </div>
     <div class="btn-group">
       ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/cases/new">+ New Case</a>` : ''}
@@ -516,6 +642,7 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     <div class="stat-card stat-card-green"><div class="stat-number">${openCases}</div><div class="stat-label">Active Cases</div></div>
     <div class="stat-card stat-card-red"><div class="stat-number">${activeWarrants}</div><div class="stat-label">Active Warrants</div></div>
     <div class="stat-card stat-card-blue"><div class="stat-number">${totalDocs}</div><div class="stat-label">Documents</div></div>
+    <div class="stat-card"><div class="stat-number">${pendingSubpoenas}</div><div class="stat-label">Pending Subpoenas</div></div>
   </div>
 
   <div class="two-col">
@@ -528,30 +655,41 @@ app.get('/dashboard', ensureAuth, (req, res) => {
       <a class="card-footer-link" href="/cases">View all cases →</a>
     </div>
     <div class="card">
-      <div class="card-header"><span class="card-title">Recent Activity</span></div>
-      <div class="activity-list">${activityRows}</div>
+      <div class="card-header"><span class="card-title">Upcoming Hearings</span><a class="btn-sm" href="/calendar">Calendar →</a></div>
+      <div class="activity-list">${upcomingRows}</div>
     </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Recent Activity</span></div>
+    <div class="activity-list">${activityRows}</div>
   </div>`;
 
-  return res.send(layout({ title: 'Dashboard — DOJ RP', body, user, page: 'dashboard' }));
+  return res.send(layout({ title: 'Dashboard — DOJ', body, user, page: 'dashboard' }));
 });
 
 function activityIcon(type) {
-  return { case_created:'NEW', case_updated:'UPD', case_closed:'CLO', warrant_issued:'WRT', warrant_executed:'EXE', file_uploaded:'DOC', note_added:'NOTE' }[type] || '–';
+  return {
+    case_created:'NEW', case_updated:'UPD', case_closed:'CLO',
+    warrant_issued:'WRT', warrant_executed:'EXE',
+    file_uploaded:'DOC', note_added:'NOTE',
+    subpoena_issued:'SUB', defendant_added:'DEF'
+  }[type] || '–';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CASES  (clerk = view only, lawyer+ = full write, ag = delete too)
+// CASES
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/cases', requirePerm('clerk'), (req, res) => {
-  const { q='', status='', type='', priority='' } = req.query;
+  const { q='', status='', type='', priority='', county='', grade='' } = req.query;
   const pl = req.session.user.permLevel;
   let cases = readJSON(CASES_FILE);
-  if (q)        cases = cases.filter(c => [c.caseNumber,c.title,c.subject,c.assignedOfficer,c.notes,...(c.charges||[])].join(' ').toLowerCase().includes(q.toLowerCase()));
-  if (status)   cases = cases.filter(c => c.status === status);
-  if (type)     cases = cases.filter(c => c.type === type);
+  if (q)       cases = cases.filter(c => [c.caseNumber,c.title,c.subject,c.assignedOfficer,c.defenseAttorney,c.notes,...(c.charges||[])].join(' ').toLowerCase().includes(q.toLowerCase()));
+  if (status)  cases = cases.filter(c => c.status === status);
+  if (type)    cases = cases.filter(c => c.type === type);
   if (priority) cases = cases.filter(c => c.priority === priority);
+  if (county)  cases = cases.filter(c => c.county === county);
+  if (grade)   cases = cases.filter(c => c.caseGrade === grade);
 
   const rows = cases.map(c => `
   <a class="table-row-link" href="/cases/${c.id}">
@@ -563,6 +701,9 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
     <span class="tr-cell muted-text">${fmtDate(c.createdAt)}</span>
   </a>`).join('') || '<p class="muted-text" style="padding:1.5rem">No cases match your filters.</p>';
 
+  const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}" ${county===cn?'selected':''}>${cn}</option>`).join('');
+  const gradeOptions  = CASE_GRADES.map(g=>`<option value="${g}" ${grade===g?'selected':''}>${g}</option>`).join('');
+
   const body = `
   <div class="page-header row-between">
     <div><h1 class="page-title">Cases</h1><p class="page-sub">${cases.length} case${cases.length!==1?'s':''} found.</p></div>
@@ -572,8 +713,10 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
     <form method="get" class="filter-row">
       <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search cases…"/>
       <select class="input-sm" name="status"><option value="">All statuses</option>${['open','investigation','pending','filed','closed','dismissed'].map(s=>`<option value="${s}" ${status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}</select>
-      <select class="input-sm" name="type"><option value="">All types</option>${['criminal','traffic','civil','internal affairs'].map(t=>`<option value="${t}" ${type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select>
+      <select class="input-sm" name="type"><option value="">All types</option>${['criminal','traffic','civil','internal affairs','juvenile'].map(t=>`<option value="${t}" ${type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select>
       <select class="input-sm" name="priority"><option value="">All priorities</option>${['low','medium','high','critical'].map(p=>`<option value="${p}" ${priority===p?'selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}</select>
+      <select class="input-sm" name="county"><option value="">All counties</option>${countyOptions}</select>
+      <select class="input-sm" name="grade"><option value="">All grades</option>${gradeOptions}</select>
       <button class="btn-primary" type="submit">Filter</button>
       <a class="btn-sm" href="/cases">Reset</a>
     </form>
@@ -583,48 +726,73 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
     <div class="table-rows">${rows}</div>
   </div>`;
 
-  return res.send(layout({ title: 'Cases — DOJ RP', body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ title: 'Cases — DOJ', body, user: req.session.user, page: 'cases' }));
 });
 
 app.get('/cases/new', requirePerm('lawyer'), (req, res) => {
   const chargeOptions = COMMON_CHARGES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
+  const courtOptions  = COURT_TYPES.map(ct=>`<option value="${escapeHtml(ct)}">${escapeHtml(ct)}</option>`).join('');
+  const gradeOptions  = CASE_GRADES.map(g=>`<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+
   const body = `
   <div class="page-header"><a class="back-link" href="/cases">← Back to cases</a><h1 class="page-title">New Case</h1></div>
   <div class="card">
     <form method="post" action="/cases">
+      <div class="section-label">Basic Information</div>
       <div class="form-grid">
-        <div class="form-group"><label>Case Title <span class="req">*</span></label><input class="input" name="title" required placeholder="Brief description"/></div>
-        <div class="form-group"><label>Subject / Defendant <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full name"/></div>
-        <div class="form-group"><label>Case Type <span class="req">*</span></label><select class="input" name="type" required><option value="criminal">Criminal</option><option value="traffic">Traffic</option><option value="civil">Civil</option><option value="internal affairs">Internal Affairs</option></select></div>
+        <div class="form-group"><label>Case Title <span class="req">*</span></label><input class="input" name="title" required placeholder="Brief description of the case"/></div>
+        <div class="form-group"><label>Defendant / Subject <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name"/></div>
+        <div class="form-group"><label>Case Type <span class="req">*</span></label><select class="input" name="type" required><option value="criminal">Criminal</option><option value="traffic">Traffic</option><option value="civil">Civil</option><option value="internal affairs">Internal Affairs</option><option value="juvenile">Juvenile</option></select></div>
+        <div class="form-group"><label>Offense Grade</label><select class="input" name="caseGrade"><option value="">— Select —</option>${gradeOptions}</select></div>
         <div class="form-group"><label>Priority</label><select class="input" name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
-        <div class="form-group"><label>Assigned Officer / ADA</label><input class="input" name="assignedOfficer" placeholder="Officer or attorney name"/></div>
-        <div class="form-group"><label>Prosecutor</label><input class="input" name="prosecutor" placeholder="Prosecutor name"/></div>
-        <div class="form-group"><label>Incident Location</label><input class="input" name="location" placeholder="Where did this occur?"/></div>
-        <div class="form-group"><label>Court Date</label><input class="input" type="date" name="courtDate"/></div>
+        <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
+        <div class="form-group"><label>Court Type</label><select class="input" name="courtType"><option value="">— Select Court —</option>${courtOptions}</select></div>
+        <div class="form-group"><label>Incident Location / Address</label><input class="input" name="location" placeholder="Street address, city, county"/></div>
       </div>
+      <div class="section-label">Parties</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Assigned Officer / ADA</label><input class="input" name="assignedOfficer" placeholder="Name of lead officer or ADA"/></div>
+        <div class="form-group"><label>Prosecutor</label><input class="input" name="prosecutor" placeholder="Prosecuting attorney"/></div>
+        <div class="form-group"><label>Defense Attorney</label><input class="input" name="defenseAttorney" placeholder="Defense counsel"/></div>
+        <div class="form-group"><label>Presiding Judge</label><input class="input" name="presidingJudge" placeholder="Judge's name"/></div>
+      </div>
+      <div class="section-label">Plea & Dates</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Defendant's Plea</label><select class="input" name="plea"><option value="not entered">Not Entered</option><option value="not guilty">Not Guilty</option><option value="guilty">Guilty</option><option value="no contest">No Contest</option></select></div>
+        <div class="form-group"><label>Bond / Bail Amount ($)</label><input class="input" type="number" name="bondAmount" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="form-group"><label>Hearing / Court Date</label><input class="input" type="date" name="courtDate"/></div>
+        <div class="form-group"><label>Trial Date</label><input class="input" type="date" name="trialDate"/></div>
+      </div>
+      <div class="section-label">Charges</div>
       <div class="form-group">
-        <label>Charges</label>
-        <p class="field-hint">Pick from the list or type custom ones comma-separated.</p>
-        <select class="input" id="chargeSelect" onchange="addCharge(this)"><option value="">— Add a common charge —</option>${chargeOptions}</select>
-        <input class="input" name="chargesRaw" id="chargesRaw" placeholder="Charges (comma-separated)" style="margin-top:0.5rem"/>
+        <p class="field-hint">Pick from the Texas Penal Code list or type custom charges comma-separated.</p>
+        <select class="input" id="chargeSelect" onchange="addCharge(this)"><option value="">— Add a charge —</option>${chargeOptions}</select>
+        <input class="input" name="chargesRaw" id="chargesRaw" placeholder="Charges appear here (comma-separated)" style="margin-top:0.5rem"/>
       </div>
-      <div class="form-group"><label>Case Notes</label><textarea class="input" name="notes" rows="4" placeholder="Describe the incident, evidence, relevant details…"></textarea></div>
+      <div class="section-label">Narrative</div>
+      <div class="form-group"><label>Case Summary / Probable Cause</label><textarea class="input" name="notes" rows="5" placeholder="Describe the incident, evidence, probable cause, relevant details…"></textarea></div>
       <div class="form-actions"><button class="btn-primary" type="submit">Create Case</button><a class="btn-sm" href="/cases">Cancel</a></div>
     </form>
   </div>
   <script>function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}</script>`;
-  return res.send(layout({ title: 'New Case — DOJ RP', body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ title: 'New Case — DOJ', body, user: req.session.user, page: 'cases' }));
 });
 
 app.post('/cases', requirePerm('lawyer'), (req, res) => {
-  const { title, subject, type, priority, assignedOfficer, prosecutor, location, courtDate, chargesRaw, notes } = req.body;
-  if (!title || !subject || !type) return res.status(400).send('Missing required fields.');
+  const { title, subject, type, caseGrade, priority, county, courtType, location, assignedOfficer, prosecutor, defenseAttorney, presidingJudge, plea, bondAmount, courtDate, trialDate, chargesRaw, notes } = req.body;
+  if (!title || !subject || !type || !county) return res.status(400).send('Missing required fields.');
   const charges = chargesRaw ? chargesRaw.split(',').map(c=>c.trim()).filter(Boolean) : [];
   const cases = readJSON(CASES_FILE);
   const newCase = {
-    id: newId(), caseNumber: nextCaseNumber(), title, subject, type, status: 'open',
-    priority: priority||'medium', assignedOfficer: assignedOfficer||'', prosecutor: prosecutor||'',
-    location: location||'', courtDate: courtDate||'', charges, notes: notes||'', caseNotes: [],
+    id: newId(), caseNumber: nextCaseNumber(), title, subject, type, caseGrade: caseGrade||'',
+    status: 'open', priority: priority||'medium',
+    county: county||'', courtType: courtType||'', location: location||'',
+    assignedOfficer: assignedOfficer||'', prosecutor: prosecutor||'',
+    defenseAttorney: defenseAttorney||'', presidingJudge: presidingJudge||'',
+    plea: plea||'not entered', bondAmount: bondAmount ? parseFloat(bondAmount) : null,
+    courtDate: courtDate||'', trialDate: trialDate||'',
+    verdict: 'pending', sentence: '', charges, notes: notes||'', caseNotes: [],
     createdBy: req.session.user.username, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };
   cases.unshift(newCase);
@@ -638,7 +806,8 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
   const c = cases.find(x => x.id === req.params.id);
   if (!c) return res.status(404).send('Case not found.');
   const pl = req.session.user.permLevel;
-  const linkedWarrants = readJSON(WARRANTS_FILE).filter(w => w.linkedCaseId === c.id);
+  const linkedWarrants  = readJSON(WARRANTS_FILE).filter(w => w.linkedCaseId === c.id);
+  const linkedSubpoenas = readJSON(SUBPOENAS_FILE).filter(s => s.linkedCaseId === c.id);
   const canWrite  = hasPerm(pl, 'lawyer');
   const canDelete = hasPerm(pl, 'ag');
 
@@ -657,6 +826,14 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
     <span class="tr-cell muted-text">${fmtDate(w.issuedAt)}</span>
   </a>`).join('') || '<p class="muted-text" style="padding:0.75rem">No warrants linked.</p>';
 
+  const subpoenaRows = linkedSubpoenas.map(s=>`
+  <div class="table-row-link" style="--cols:4">
+    <span class="tr-cell mono">${escapeHtml(s.subpoenaNumber)}</span>
+    <span class="tr-cell fw">${escapeHtml(s.recipient)}</span>
+    <span class="tr-cell">${badge(s.status, SUBPOENA_STATUS_CLASS[s.status]||'badge-gray')}</span>
+    <span class="tr-cell muted-text">${fmtDate(s.dueDate)}</span>
+  </div>`).join('') || '<p class="muted-text" style="padding:0.75rem">No subpoenas issued.</p>';
+
   const body = `
   <div class="page-header row-between">
     <div>
@@ -667,34 +844,60 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
         ${badge(c.status, CASE_STATUS_CLASS[c.status]||'badge-gray')}
         ${badge(c.priority||'low', PRIORITY_CLASS[c.priority||'low'])}
         ${badge(c.type||'criminal','badge-blue')}
+        ${c.caseGrade ? badge(c.caseGrade,'badge-purple') : ''}
       </div>
     </div>
     <div class="btn-group">
-      ${canWrite  ? `<a class="btn-sm" href="/cases/${c.id}/edit">Edit</a>` : ''}
-      ${canDelete ? `<form method="post" action="/cases/${c.id}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete this case?')">Delete</button></form>` : ''}
+      ${canWrite  ? `<a class="btn-sm" href="/cases/${c.id}/edit">Edit Case</a>` : ''}
+      ${canWrite  ? `<a class="btn-sm" href="/warrants/new?caseId=${c.id}">Issue Warrant</a>` : ''}
+      ${canWrite  ? `<a class="btn-sm" href="/subpoenas/new?caseId=${c.id}">Issue Subpoena</a>` : ''}
+      ${canDelete ? `<form method="post" action="/cases/${c.id}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Permanently delete this case?')">Delete</button></form>` : ''}
     </div>
   </div>
-  <div class="detail-grid">
+  <div class="detail-grid three-col">
     <div class="card">
       <div class="card-title" style="margin-bottom:1rem">Case Details</div>
       <dl class="detail-list">
-        <dt>Subject</dt><dd>${escapeHtml(c.subject)}</dd>
-        <dt>Assigned Officer / ADA</dt><dd>${escapeHtml(c.assignedOfficer||'—')}</dd>
-        <dt>Prosecutor</dt><dd>${escapeHtml(c.prosecutor||'—')}</dd>
-        <dt>Location</dt><dd>${escapeHtml(c.location||'—')}</dd>
-        <dt>Court Date</dt><dd>${fmtDate(c.courtDate)}</dd>
+        <dt>Case Number</dt><dd class="mono">${escapeHtml(c.caseNumber)}</dd>
+        <dt>County</dt><dd>${escapeHtml(c.county||'—')} County, TX</dd>
+        <dt>Court</dt><dd>${escapeHtml(c.courtType||'—')}</dd>
+        <dt>Offense Grade</dt><dd>${escapeHtml(c.caseGrade||'—')}</dd>
+        <dt>Incident Location</dt><dd>${escapeHtml(c.location||'—')}</dd>
         <dt>Filed By</dt><dd>${escapeHtml(c.createdBy)}</dd>
-        <dt>Opened</dt><dd>${fmtDate(c.createdAt)}</dd>
+        <dt>Date Filed</dt><dd>${fmtDate(c.createdAt)}</dd>
         <dt>Last Updated</dt><dd>${fmtDate(c.updatedAt)}</dd>
-        ${c.outcome?`<dt>Outcome</dt><dd>${escapeHtml(c.outcome)}</dd>`:''}
       </dl>
     </div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:0.75rem">Charges</div>
-      <div class="tag-wrap">${chargesHtml}</div>
-      <div class="card-title" style="margin-top:1.25rem;margin-bottom:0.75rem">Summary / Notes</div>
-      <p class="case-notes-text">${escapeHtml(c.notes||'No notes.').replace(/\n/g,'<br/>')}</p>
+      <div class="card-title" style="margin-bottom:1rem">Parties</div>
+      <dl class="detail-list">
+        <dt>Defendant</dt><dd><strong>${escapeHtml(c.subject)}</strong></dd>
+        <dt>Defense Attorney</dt><dd>${escapeHtml(c.defenseAttorney||'—')}</dd>
+        <dt>Prosecutor</dt><dd>${escapeHtml(c.prosecutor||'—')}</dd>
+        <dt>Lead Officer / ADA</dt><dd>${escapeHtml(c.assignedOfficer||'—')}</dd>
+        <dt>Presiding Judge</dt><dd>${escapeHtml(c.presidingJudge||'—')}</dd>
+      </dl>
     </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Status & Disposition</div>
+      <dl class="detail-list">
+        <dt>Plea</dt><dd>${badge(c.plea||'not entered', PLEA_CLASS[c.plea||'not entered']||'badge-gray')}</dd>
+        <dt>Verdict</dt><dd>${badge(c.verdict||'pending', VERDICT_CLASS[c.verdict||'pending']||'badge-gray')}</dd>
+        <dt>Bond / Bail</dt><dd>${c.bondAmount != null ? `$${Number(c.bondAmount).toLocaleString('en-US',{minimumFractionDigits:2})}` : '—'}</dd>
+        <dt>Hearing Date</dt><dd>${fmtDate(c.courtDate)}</dd>
+        <dt>Trial Date</dt><dd>${fmtDate(c.trialDate)}</dd>
+        <dt>Sentence</dt><dd>${escapeHtml(c.sentence||'—')}</dd>
+        ${c.outcome?`<dt>Outcome</dt><dd>${escapeHtml(c.outcome)}</dd>`:''}
+      </dl>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Charges</div>
+    <div class="tag-wrap">${chargesHtml}</div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Case Summary / Probable Cause</div>
+    <p class="case-notes-text">${escapeHtml(c.notes||'No narrative entered.').replace(/\n/g,'<br/>')}</p>
   </div>
   <div class="card">
     <div class="card-header">
@@ -705,14 +908,22 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
     <div class="table-rows" style="--cols:4">${warrantRows}</div>
   </div>
   <div class="card">
-    <div class="card-title" style="margin-bottom:0.75rem">Case Notes</div>
+    <div class="card-header">
+      <span class="card-title">Subpoenas</span>
+      ${canWrite ? `<a class="btn-sm" href="/subpoenas/new?caseId=${c.id}">+ Issue Subpoena</a>` : ''}
+    </div>
+    <div class="table-header" style="grid-template-columns:1fr 1.5fr 1fr 1fr"><span>Subpoena #</span><span>Recipient</span><span>Status</span><span>Due</span></div>
+    <div class="table-rows" style="--cols:4">${subpoenaRows}</div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Case Notes / Journal</div>
     <div class="notes-list">${notesHtml}</div>
     <form method="post" action="/cases/${c.id}/notes" style="margin-top:0.75rem">
-      <textarea class="input" name="text" rows="2" placeholder="Add a note…" required></textarea>
+      <textarea class="input" name="text" rows="3" placeholder="Add a note, hearing update, or journal entry…" required></textarea>
       <button class="btn-primary" style="margin-top:0.5rem" type="submit">Add Note</button>
     </form>
   </div>`;
-  return res.send(layout({ title: `${c.caseNumber} — DOJ RP`, body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ title: `${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
 
 app.get('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
@@ -721,41 +932,73 @@ app.get('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
   if (!c) return res.status(404).send('Case not found.');
   const chargeOptions = COMMON_CHARGES.map(ch=>`<option value="${escapeHtml(ch)}">${escapeHtml(ch)}</option>`).join('');
   const statusOptions = ['open','investigation','pending','filed','closed','dismissed'].map(s=>`<option value="${s}" ${c.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+  const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}" ${c.county===cn?'selected':''}>${cn}</option>`).join('');
+  const courtOptions  = COURT_TYPES.map(ct=>`<option value="${escapeHtml(ct)}" ${c.courtType===ct?'selected':''}>${escapeHtml(ct)}</option>`).join('');
+  const gradeOptions  = CASE_GRADES.map(g=>`<option value="${escapeHtml(g)}" ${c.caseGrade===g?'selected':''}>${escapeHtml(g)}</option>`).join('');
+  const pleaOptions   = ['not entered','not guilty','guilty','no contest'].map(p=>`<option value="${p}" ${(c.plea||'not entered')===p?'selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('');
+  const verdictOptions= ['pending','not guilty','guilty','dismissed','mistrial'].map(v=>`<option value="${v}" ${(c.verdict||'pending')===v?'selected':''}>${v.charAt(0).toUpperCase()+v.slice(1)}</option>`).join('');
+
   const body = `
   <div class="page-header"><a class="back-link" href="/cases/${c.id}">← Back to case</a><h1 class="page-title">Edit Case — ${escapeHtml(c.caseNumber)}</h1></div>
   <div class="card">
     <form method="post" action="/cases/${c.id}/edit">
+      <div class="section-label">Basic Information</div>
       <div class="form-grid">
         <div class="form-group"><label>Case Title <span class="req">*</span></label><input class="input" name="title" value="${escapeHtml(c.title)}" required/></div>
-        <div class="form-group"><label>Subject <span class="req">*</span></label><input class="input" name="subject" value="${escapeHtml(c.subject)}" required/></div>
+        <div class="form-group"><label>Defendant / Subject <span class="req">*</span></label><input class="input" name="subject" value="${escapeHtml(c.subject)}" required/></div>
         <div class="form-group"><label>Status</label><select class="input" name="status">${statusOptions}</select></div>
+        <div class="form-group"><label>Offense Grade</label><select class="input" name="caseGrade"><option value="">— Select —</option>${gradeOptions}</select></div>
         <div class="form-group"><label>Priority</label><select class="input" name="priority">${['low','medium','high','critical'].map(p=>`<option value="${p}" ${(c.priority||'medium')===p?'selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}</select></div>
-        <div class="form-group"><label>Assigned Officer / ADA</label><input class="input" name="assignedOfficer" value="${escapeHtml(c.assignedOfficer||'')}"/></div>
-        <div class="form-group"><label>Prosecutor</label><input class="input" name="prosecutor" value="${escapeHtml(c.prosecutor||'')}"/></div>
-        <div class="form-group"><label>Location</label><input class="input" name="location" value="${escapeHtml(c.location||'')}"/></div>
-        <div class="form-group"><label>Court Date</label><input class="input" type="date" name="courtDate" value="${escapeHtml(c.courtDate||'')}"/></div>
+        <div class="form-group"><label>County</label><select class="input" name="county"><option value="">— Select County —</option>${countyOptions}</select></div>
+        <div class="form-group"><label>Court Type</label><select class="input" name="courtType"><option value="">— Select Court —</option>${courtOptions}</select></div>
+        <div class="form-group"><label>Incident Location</label><input class="input" name="location" value="${escapeHtml(c.location||'')}"/></div>
       </div>
-      <div class="form-group"><label>Outcome / Verdict</label><input class="input" name="outcome" value="${escapeHtml(c.outcome||'')}" placeholder="e.g. Guilty — 10 years"/></div>
+      <div class="section-label">Parties</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Lead Officer / ADA</label><input class="input" name="assignedOfficer" value="${escapeHtml(c.assignedOfficer||'')}"/></div>
+        <div class="form-group"><label>Prosecutor</label><input class="input" name="prosecutor" value="${escapeHtml(c.prosecutor||'')}"/></div>
+        <div class="form-group"><label>Defense Attorney</label><input class="input" name="defenseAttorney" value="${escapeHtml(c.defenseAttorney||'')}"/></div>
+        <div class="form-group"><label>Presiding Judge</label><input class="input" name="presidingJudge" value="${escapeHtml(c.presidingJudge||'')}"/></div>
+      </div>
+      <div class="section-label">Plea, Verdict & Dates</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Plea</label><select class="input" name="plea">${pleaOptions}</select></div>
+        <div class="form-group"><label>Verdict</label><select class="input" name="verdict">${verdictOptions}</select></div>
+        <div class="form-group"><label>Bond / Bail ($)</label><input class="input" type="number" name="bondAmount" value="${c.bondAmount != null ? c.bondAmount : ''}" min="0" step="0.01"/></div>
+        <div class="form-group"><label>Sentence</label><input class="input" name="sentence" value="${escapeHtml(c.sentence||'')}" placeholder="e.g. 10 years TDCJ, probation…"/></div>
+        <div class="form-group"><label>Hearing Date</label><input class="input" type="date" name="courtDate" value="${escapeHtml(c.courtDate||'')}"/></div>
+        <div class="form-group"><label>Trial Date</label><input class="input" type="date" name="trialDate" value="${escapeHtml(c.trialDate||'')}"/></div>
+      </div>
+      <div class="form-group"><label>Outcome / Notes on Disposition</label><input class="input" name="outcome" value="${escapeHtml(c.outcome||'')}" placeholder="e.g. Guilty — sentenced 10 yrs TDCJ"/></div>
+      <div class="section-label">Charges</div>
       <div class="form-group">
-        <label>Charges</label>
-        <select class="input" id="chargeSelect" onchange="addCharge(this)"><option value="">— Add a common charge —</option>${chargeOptions}</select>
+        <select class="input" id="chargeSelect" onchange="addCharge(this)"><option value="">— Add a charge —</option>${chargeOptions}</select>
         <input class="input" name="chargesRaw" id="chargesRaw" value="${escapeHtml((c.charges||[]).join(', '))}" style="margin-top:0.5rem" placeholder="Comma-separated"/>
       </div>
-      <div class="form-group"><label>Case Notes</label><textarea class="input" name="notes" rows="4">${escapeHtml(c.notes||'')}</textarea></div>
+      <div class="section-label">Narrative</div>
+      <div class="form-group"><label>Case Summary / Probable Cause</label><textarea class="input" name="notes" rows="5">${escapeHtml(c.notes||'')}</textarea></div>
       <div class="form-actions"><button class="btn-primary" type="submit">Save Changes</button><a class="btn-sm" href="/cases/${c.id}">Cancel</a></div>
     </form>
   </div>
   <script>function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}</script>`;
-  return res.send(layout({ title: `Edit ${c.caseNumber} — DOJ RP`, body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ title: `Edit ${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
 
 app.post('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
   const cases = readJSON(CASES_FILE);
   const idx = cases.findIndex(x => x.id === req.params.id);
   if (idx===-1) return res.status(404).send('Case not found.');
-  const { title, subject, status, priority, assignedOfficer, prosecutor, location, courtDate, outcome, chargesRaw, notes } = req.body;
+  const { title, subject, status, caseGrade, priority, county, courtType, location, assignedOfficer, prosecutor, defenseAttorney, presidingJudge, plea, verdict, bondAmount, sentence, courtDate, trialDate, outcome, chargesRaw, notes } = req.body;
   const charges = chargesRaw ? chargesRaw.split(',').map(c=>c.trim()).filter(Boolean) : [];
-  Object.assign(cases[idx], { title, subject, status, priority, assignedOfficer, prosecutor, location, courtDate: courtDate||'', outcome: outcome||'', charges, notes: notes||'', updatedAt: new Date().toISOString() });
+  Object.assign(cases[idx], {
+    title, subject, status, caseGrade: caseGrade||'', priority, county: county||'',
+    courtType: courtType||'', location: location||'', assignedOfficer, prosecutor,
+    defenseAttorney: defenseAttorney||'', presidingJudge: presidingJudge||'',
+    plea: plea||'not entered', verdict: verdict||'pending',
+    bondAmount: bondAmount ? parseFloat(bondAmount) : null,
+    sentence: sentence||'', courtDate: courtDate||'', trialDate: trialDate||'',
+    outcome: outcome||'', charges, notes: notes||'', updatedAt: new Date().toISOString()
+  });
   writeJSON(CASES_FILE, cases);
   logActivity('case_updated', `Case ${cases[idx].caseNumber} updated`, req.session.user.username);
   return res.redirect(`/cases/${req.params.id}`);
@@ -783,7 +1026,7 @@ app.post('/cases/:id/notes', requirePerm('clerk'), (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// WARRANTS  (citizen = view active only, lawyer+ = create/execute, ag = delete)
+// WARRANTS
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/warrants', requirePerm('citizen'), (req, res) => {
@@ -791,10 +1034,9 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
   const pl = req.session.user.permLevel;
   let warrants = readJSON(WARRANTS_FILE);
 
-  // Citizens only see active warrants
   if (!hasPerm(pl,'clerk')) warrants = warrants.filter(w => w.status === 'active');
 
-  if (q)      warrants = warrants.filter(w => [w.warrantNumber,w.subject,w.issuedBy,w.description].join(' ').toLowerCase().includes(q.toLowerCase()));
+  if (q)      warrants = warrants.filter(w => [w.warrantNumber,w.subject,w.issuedBy,w.description,w.judge].join(' ').toLowerCase().includes(q.toLowerCase()));
   if (status && hasPerm(pl,'clerk')) warrants = warrants.filter(w => w.status === status);
   if (type)   warrants = warrants.filter(w => w.type === type);
 
@@ -807,7 +1049,7 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
     <span class="tr-cell muted-text">${fmtDate(w.issuedAt)}</span>
   </a>`).join('') || '<p class="muted-text" style="padding:1.5rem">No warrants match your search.</p>';
 
-  const citizenNotice = !hasPerm(pl,'clerk') ? `<div class="alert-box">Showing <strong>active warrants only</strong>. Sign in with a staff role to see all warrant records.</div>` : '';
+  const citizenNotice = !hasPerm(pl,'clerk') ? `<div class="alert-box">Showing <strong>active warrants only</strong>. Sign in with a staff role to access all warrant records.</div>` : '';
 
   const body = `
   <div class="page-header row-between">
@@ -817,9 +1059,9 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
   ${citizenNotice}
   <div class="card" style="margin-bottom:1rem">
     <form method="get" class="filter-row">
-      <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search by name or warrant number…"/>
+      <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search by name, warrant #, or judge…"/>
       ${hasPerm(pl,'clerk') ? `<select class="input-sm" name="status"><option value="">All statuses</option>${['active','executed','expired','cancelled'].map(s=>`<option value="${s}" ${status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}</select>` : ''}
-      <select class="input-sm" name="type"><option value="">All types</option>${['arrest','search','bench'].map(t=>`<option value="${t}" ${type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}</select>
+      <select class="input-sm" name="type"><option value="">All types</option>${['arrest','search','bench'].map(t=>`<option value="${t}" ${type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)} Warrant</option>`).join('')}</select>
       <button class="btn-primary" type="submit">Search</button>
       <a class="btn-sm" href="/warrants">Reset</a>
     </form>
@@ -828,12 +1070,13 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
     <div class="table-header" style="grid-template-columns:1fr 1.5fr 1fr 1fr 1fr"><span>Warrant #</span><span>Subject</span><span>Type</span><span>Status</span><span>Issued</span></div>
     <div class="table-rows">${rows}</div>
   </div>`;
-  return res.send(layout({ title: 'Warrants — DOJ RP', body, user: req.session.user, page: 'warrants' }));
+  return res.send(layout({ title: 'Warrants — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
 app.get('/warrants/new', requirePerm('lawyer'), (req, res) => {
   const { caseId='' } = req.query;
   const cases = readJSON(CASES_FILE);
+  const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
   const caseOptions = cases.map(c=>`<option value="${c.id}" ${caseId===c.id?'selected':''}>${escapeHtml(c.caseNumber)} — ${escapeHtml(c.title)}</option>`).join('');
   const body = `
   <div class="page-header"><a class="back-link" href="/warrants">← Back to warrants</a><h1 class="page-title">Issue Warrant</h1></div>
@@ -841,58 +1084,67 @@ app.get('/warrants/new', requirePerm('lawyer'), (req, res) => {
     <form method="post" action="/warrants">
       <div class="form-grid">
         <div class="form-group"><label>Warrant Type <span class="req">*</span></label><select class="input" name="type" required><option value="arrest">Arrest Warrant</option><option value="search">Search Warrant</option><option value="bench">Bench Warrant</option></select></div>
-        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full name of subject"/></div>
-        <div class="form-group"><label>Issued By <span class="req">*</span></label><input class="input" name="issuedBy" required placeholder="Judge / Issuing authority"/></div>
-        <div class="form-group"><label>Issue Date</label><input class="input" type="date" name="issuedAt" value="${new Date().toISOString().split('T')[0]}"/></div>
-        <div class="form-group"><label>Expiry Date</label><input class="input" type="date" name="expiresAt"/></div>
+        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of subject"/></div>
+        <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
+        <div class="form-group"><label>Issuing Judge <span class="req">*</span></label><input class="input" name="judge" required placeholder="Honorable Judge name"/></div>
+        <div class="form-group"><label>Subject DOB</label><input class="input" type="date" name="subjectDob"/></div>
+        <div class="form-group"><label>Subject Description</label><input class="input" name="subjectDescription" placeholder="Height, weight, hair, eyes…"/></div>
+        <div class="form-group"><label>Address / Location to Search or Arrest</label><input class="input" name="address" placeholder="Street address or last known location"/></div>
         <div class="form-group"><label>Linked Case</label><select class="input" name="linkedCaseId"><option value="">— None —</option>${caseOptions}</select></div>
+        <div class="form-group"><label>Issue Date</label><input class="input" type="date" name="issuedAt" value="${new Date().toISOString().split('T')[0]}"/></div>
+        <div class="form-group"><label>Expiration Date</label><input class="input" type="date" name="expiresAt"/></div>
       </div>
-      <div class="form-group"><label>Description / Probable Cause</label><textarea class="input" name="description" rows="4" placeholder="Describe the grounds for this warrant…"></textarea></div>
+      <div class="form-group"><label>Probable Cause / Description <span class="req">*</span></label><textarea class="input" name="description" rows="4" required placeholder="Describe the probable cause, charges, and reason for this warrant…"></textarea></div>
       <div class="form-actions"><button class="btn-primary" type="submit">Issue Warrant</button><a class="btn-sm" href="/warrants">Cancel</a></div>
     </form>
   </div>`;
-  return res.send(layout({ title: 'Issue Warrant — DOJ RP', body, user: req.session.user, page: 'warrants' }));
+  return res.send(layout({ title: 'Issue Warrant — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
 app.post('/warrants', requirePerm('lawyer'), (req, res) => {
-  const { type, subject, issuedBy, issuedAt, expiresAt, linkedCaseId, description } = req.body;
-  if (!type||!subject||!issuedBy) return res.status(400).send('Missing required fields.');
+  const { type, subject, county, judge, subjectDob, subjectDescription, address, linkedCaseId, issuedAt, expiresAt, description } = req.body;
+  if (!type || !subject || !county || !judge || !description) return res.status(400).send('Missing required fields.');
   const warrants = readJSON(WARRANTS_FILE);
   const w = {
-    id: newId(), warrantNumber: nextWarrantNumber(), type, status: 'active',
-    subject, issuedBy, issuedAt: issuedAt||new Date().toISOString().split('T')[0],
-    expiresAt: expiresAt||'', linkedCaseId: linkedCaseId||'',
-    description: description||'', createdBy: req.session.user.username, createdAt: new Date().toISOString()
+    id: newId(), warrantNumber: nextWarrantNumber(), type, subject,
+    county: county||'', judge: judge||'',
+    subjectDob: subjectDob||'', subjectDescription: subjectDescription||'',
+    address: address||'', linkedCaseId: linkedCaseId||'',
+    status: 'active', issuedBy: req.session.user.username,
+    issuedAt: issuedAt || new Date().toISOString().split('T')[0],
+    expiresAt: expiresAt||'', executedAt: '', description
   };
   warrants.unshift(w);
   writeJSON(WARRANTS_FILE, warrants);
-  logActivity('warrant_issued', `${w.type.charAt(0).toUpperCase()+w.type.slice(1)} warrant ${w.warrantNumber} issued for ${subject}`, req.session.user.username);
+  logActivity('warrant_issued', `${type.charAt(0).toUpperCase()+type.slice(1)} Warrant ${w.warrantNumber} issued for ${subject}`, req.session.user.username);
   return res.redirect(`/warrants/${w.id}`);
 });
 
 app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
   const warrants = readJSON(WARRANTS_FILE);
-  const w = warrants.find(x=>x.id===req.params.id);
+  const w = warrants.find(x => x.id === req.params.id);
   if (!w) return res.status(404).send('Warrant not found.');
   const pl = req.session.user.permLevel;
-  // Citizens can only view active warrants
-  if (!hasPerm(pl,'clerk') && w.status !== 'active') return res.status(403).send('You can only view active warrants.');
-  const cases = readJSON(CASES_FILE);
-  const linkedCase = w.linkedCaseId ? cases.find(c=>c.id===w.linkedCaseId) : null;
-  const canWrite  = hasPerm(pl,'lawyer');
-  const canDelete = hasPerm(pl,'ag');
+  if (!hasPerm(pl,'clerk') && w.status !== 'active') return res.status(403).send('Access denied.');
+  const canWrite  = hasPerm(pl, 'lawyer');
+  const canDelete = hasPerm(pl, 'ag');
+
+  const linkedCase = w.linkedCaseId ? readJSON(CASES_FILE).find(c => c.id === w.linkedCaseId) : null;
 
   const body = `
   <div class="page-header row-between">
     <div>
       <a class="back-link" href="/warrants">← Back to warrants</a>
-      <h1 class="page-title">${escapeHtml(w.warrantNumber)}</h1>
-      <div class="badge-row">${badge(w.type+' warrant','badge-blue')} ${badge(w.status, WARRANT_STATUS_CLASS[w.status]||'badge-gray')}</div>
+      <h1 class="page-title">${escapeHtml(w.type.charAt(0).toUpperCase()+w.type.slice(1))} Warrant</h1>
+      <div class="badge-row">
+        <span class="mono muted-text">${escapeHtml(w.warrantNumber)}</span>
+        ${badge(w.status, WARRANT_STATUS_CLASS[w.status]||'badge-gray')}
+        ${badge(w.type,'badge-blue')}
+      </div>
     </div>
     <div class="btn-group">
-      ${canWrite && w.status==='active' ? `
-        <form method="post" action="/warrants/${w.id}/status" style="display:inline"><input type="hidden" name="status" value="executed"/><button class="btn-primary" type="submit">Mark Executed</button></form>
-        <form method="post" action="/warrants/${w.id}/status" style="display:inline"><input type="hidden" name="status" value="cancelled"/><button class="btn-sm" type="submit">Cancel</button></form>` : ''}
+      ${canWrite && w.status==='active' ? `<form method="post" action="/warrants/${w.id}/execute" style="display:inline"><button class="btn-primary" type="submit">Mark Executed</button></form>` : ''}
+      ${canWrite && w.status==='active' ? `<form method="post" action="/warrants/${w.id}/cancel" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Cancel this warrant?')">Cancel</button></form>` : ''}
       ${canDelete ? `<form method="post" action="/warrants/${w.id}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete this warrant?')">Delete</button></form>` : ''}
     </div>
   </div>
@@ -900,104 +1152,498 @@ app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
     <div class="card">
       <div class="card-title" style="margin-bottom:1rem">Warrant Details</div>
       <dl class="detail-list">
-        <dt>Subject</dt><dd>${escapeHtml(w.subject)}</dd>
+        <dt>Warrant #</dt><dd class="mono">${escapeHtml(w.warrantNumber)}</dd>
         <dt>Type</dt><dd>${escapeHtml(w.type.charAt(0).toUpperCase()+w.type.slice(1))} Warrant</dd>
+        <dt>County</dt><dd>${escapeHtml(w.county||'—')} County, TX</dd>
+        <dt>Issuing Judge</dt><dd>${escapeHtml(w.judge||'—')}</dd>
         <dt>Issued By</dt><dd>${escapeHtml(w.issuedBy)}</dd>
         <dt>Issue Date</dt><dd>${fmtDate(w.issuedAt)}</dd>
-        <dt>Expires</dt><dd>${w.expiresAt?fmtDate(w.expiresAt):'No expiry'}</dd>
-        ${hasPerm(pl,'clerk') ? `<dt>Created By</dt><dd>${escapeHtml(w.createdBy)}</dd>` : ''}
-        ${linkedCase && hasPerm(pl,'clerk') ? `<dt>Linked Case</dt><dd><a href="/cases/${linkedCase.id}" class="link">${escapeHtml(linkedCase.caseNumber)} — ${escapeHtml(linkedCase.title)}</a></dd>` : ''}
+        <dt>Expiration</dt><dd>${fmtDate(w.expiresAt)}</dd>
+        ${w.executedAt ? `<dt>Executed</dt><dd>${fmtDate(w.executedAt)}</dd>` : ''}
       </dl>
     </div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:0.75rem">Description / Probable Cause</div>
-      <p class="case-notes-text">${escapeHtml(w.description||'No description.').replace(/\n/g,'<br/>')}</p>
+      <div class="card-title" style="margin-bottom:1rem">Subject Information</div>
+      <dl class="detail-list">
+        <dt>Subject</dt><dd><strong>${escapeHtml(w.subject)}</strong></dd>
+        <dt>Date of Birth</dt><dd>${fmtDate(w.subjectDob)}</dd>
+        <dt>Description</dt><dd>${escapeHtml(w.subjectDescription||'—')}</dd>
+        <dt>Address / Location</dt><dd>${escapeHtml(w.address||'—')}</dd>
+        ${linkedCase ? `<dt>Linked Case</dt><dd><a class="link" href="/cases/${linkedCase.id}">${escapeHtml(linkedCase.caseNumber)} — ${escapeHtml(linkedCase.title)}</a></dd>` : ''}
+      </dl>
     </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Probable Cause / Description</div>
+    <p class="case-notes-text">${escapeHtml(w.description||'').replace(/\n/g,'<br/>')}</p>
   </div>`;
-  return res.send(layout({ title: `${w.warrantNumber} — DOJ RP`, body, user: req.session.user, page: 'warrants' }));
+  return res.send(layout({ title: `${w.warrantNumber} — DOJ`, body, user: req.session.user, page: 'warrants' }));
 });
 
-app.post('/warrants/:id/status', requirePerm('lawyer'), (req, res) => {
+app.post('/warrants/:id/execute', requirePerm('lawyer'), (req, res) => {
   const warrants = readJSON(WARRANTS_FILE);
   const idx = warrants.findIndex(x=>x.id===req.params.id);
   if (idx===-1) return res.status(404).send('Not found.');
-  warrants[idx].status = req.body.status;
+  warrants[idx].status = 'executed';
+  warrants[idx].executedAt = new Date().toISOString();
   writeJSON(WARRANTS_FILE, warrants);
-  logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} marked as ${req.body.status}`, req.session.user.username);
+  logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} executed`, req.session.user.username);
+  return res.redirect(`/warrants/${req.params.id}`);
+});
+
+app.post('/warrants/:id/cancel', requirePerm('lawyer'), (req, res) => {
+  const warrants = readJSON(WARRANTS_FILE);
+  const idx = warrants.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  warrants[idx].status = 'cancelled';
+  writeJSON(WARRANTS_FILE, warrants);
+  logActivity('warrant_executed', `Warrant ${warrants[idx].warrantNumber} cancelled`, req.session.user.username);
   return res.redirect(`/warrants/${req.params.id}`);
 });
 
 app.post('/warrants/:id/delete', requirePerm('ag'), (req, res) => {
-  writeJSON(WARRANTS_FILE, readJSON(WARRANTS_FILE).filter(x=>x.id!==req.params.id));
+  let warrants = readJSON(WARRANTS_FILE);
+  warrants = warrants.filter(x=>x.id!==req.params.id);
+  writeJSON(WARRANTS_FILE, warrants);
   return res.redirect('/warrants');
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// DOCUMENTS  (clerk+)
+// DEFENDANTS
+// ════════════════════════════════════════════════════════════════════════════
+
+app.get('/defendants', requirePerm('clerk'), (req, res) => {
+  const { q='' } = req.query;
+  const pl = req.session.user.permLevel;
+  let defendants = readJSON(DEFENDANTS_FILE);
+  if (q) defendants = defendants.filter(d => [d.fullName, d.dob, d.address, d.id_number, d.notes].join(' ').toLowerCase().includes(q.toLowerCase()));
+
+  const rows = defendants.map(d => `
+  <a class="table-row-link" href="/defendants/${d.id}" style="--cols:4">
+    <span class="tr-cell fw">${escapeHtml(d.fullName)}</span>
+    <span class="tr-cell muted-text">${fmtDate(d.dob)}</span>
+    <span class="tr-cell muted-text">${escapeHtml(d.address||'—')}</span>
+    <span class="tr-cell muted-text">${fmtDate(d.createdAt)}</span>
+  </a>`).join('') || '<p class="muted-text" style="padding:1.5rem">No defendants on record.</p>';
+
+  const body = `
+  <div class="page-header row-between">
+    <div><h1 class="page-title">Defendants</h1><p class="page-sub">${defendants.length} record${defendants.length!==1?'s':''} found.</p></div>
+    ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/defendants/new">+ Add Defendant</a>` : ''}
+  </div>
+  <div class="card" style="margin-bottom:1rem">
+    <form method="get" class="filter-row">
+      <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search by name, DOB, or address…" style="flex:1"/>
+      <button class="btn-primary" type="submit">Search</button>
+      <a class="btn-sm" href="/defendants">Reset</a>
+    </form>
+  </div>
+  <div class="card">
+    <div class="table-header" style="grid-template-columns:1.5fr 1fr 1.5fr 1fr"><span>Full Name</span><span>Date of Birth</span><span>Address</span><span>Added</span></div>
+    <div class="table-rows">${rows}</div>
+  </div>`;
+  return res.send(layout({ title: 'Defendants — DOJ', body, user: req.session.user, page: 'defendants' }));
+});
+
+app.get('/defendants/new', requirePerm('lawyer'), (req, res) => {
+  const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
+  const body = `
+  <div class="page-header"><a class="back-link" href="/defendants">← Back</a><h1 class="page-title">Add Defendant Record</h1></div>
+  <div class="card">
+    <form method="post" action="/defendants">
+      <div class="form-grid">
+        <div class="form-group"><label>Full Legal Name <span class="req">*</span></label><input class="input" name="fullName" required/></div>
+        <div class="form-group"><label>Date of Birth</label><input class="input" type="date" name="dob"/></div>
+        <div class="form-group"><label>Texas DL / ID Number</label><input class="input" name="id_number" placeholder="Texas Driver's License #"/></div>
+        <div class="form-group"><label>Race / Ethnicity</label><input class="input" name="race" placeholder="As noted in official records"/></div>
+        <div class="form-group"><label>Height</label><input class="input" name="height" placeholder="e.g. 5'10&quot;"/></div>
+        <div class="form-group"><label>Weight</label><input class="input" name="weight" placeholder="e.g. 180 lbs"/></div>
+        <div class="form-group"><label>Hair Color</label><input class="input" name="hair"/></div>
+        <div class="form-group"><label>Eye Color</label><input class="input" name="eyes"/></div>
+        <div class="form-group"><label>Address</label><input class="input" name="address" placeholder="Street address"/></div>
+        <div class="form-group"><label>City</label><input class="input" name="city"/></div>
+        <div class="form-group"><label>County</label><select class="input" name="county"><option value="">— Select —</option>${countyOptions}</select></div>
+        <div class="form-group"><label>Phone</label><input class="input" name="phone" type="tel"/></div>
+      </div>
+      <div class="form-group"><label>Additional Notes</label><textarea class="input" name="notes" rows="3" placeholder="Known associates, aliases, priors…"></textarea></div>
+      <div class="form-actions"><button class="btn-primary" type="submit">Save Record</button><a class="btn-sm" href="/defendants">Cancel</a></div>
+    </form>
+  </div>`;
+  return res.send(layout({ title: 'Add Defendant — DOJ', body, user: req.session.user, page: 'defendants' }));
+});
+
+app.post('/defendants', requirePerm('lawyer'), (req, res) => {
+  const { fullName, dob, id_number, race, height, weight, hair, eyes, address, city, county, phone, notes } = req.body;
+  if (!fullName) return res.status(400).send('Name is required.');
+  const defendants = readJSON(DEFENDANTS_FILE);
+  const d = {
+    id: newId(), fullName, dob: dob||'', id_number: id_number||'',
+    race: race||'', height: height||'', weight: weight||'',
+    hair: hair||'', eyes: eyes||'', address: address||'',
+    city: city||'', county: county||'', phone: phone||'', notes: notes||'',
+    createdBy: req.session.user.username, createdAt: new Date().toISOString()
+  };
+  defendants.unshift(d);
+  writeJSON(DEFENDANTS_FILE, defendants);
+  logActivity('defendant_added', `Defendant record added: ${fullName}`, req.session.user.username);
+  return res.redirect(`/defendants/${d.id}`);
+});
+
+app.get('/defendants/:id', requirePerm('clerk'), (req, res) => {
+  const defendants = readJSON(DEFENDANTS_FILE);
+  const d = defendants.find(x => x.id === req.params.id);
+  if (!d) return res.status(404).send('Record not found.');
+  const pl = req.session.user.permLevel;
+  const linkedCases = readJSON(CASES_FILE).filter(c => c.subject && c.subject.toLowerCase() === d.fullName.toLowerCase());
+  const linkedWarrants = readJSON(WARRANTS_FILE).filter(w => w.subject && w.subject.toLowerCase() === d.fullName.toLowerCase());
+
+  const caseRows = linkedCases.map(c=>`
+  <a class="table-row-link" href="/cases/${c.id}" style="--cols:3">
+    <span class="tr-cell mono">${escapeHtml(c.caseNumber)}</span>
+    <span class="tr-cell fw">${escapeHtml(c.title)}</span>
+    <span class="tr-cell">${badge(c.status, CASE_STATUS_CLASS[c.status]||'badge-gray')}</span>
+  </a>`).join('') || '<p class="muted-text" style="padding:0.75rem">No linked cases found.</p>';
+
+  const warrantRows = linkedWarrants.map(w=>`
+  <a class="table-row-link" href="/warrants/${w.id}" style="--cols:3">
+    <span class="tr-cell mono">${escapeHtml(w.warrantNumber)}</span>
+    <span class="tr-cell">${badge(w.type,'badge-blue')}</span>
+    <span class="tr-cell">${badge(w.status, WARRANT_STATUS_CLASS[w.status]||'badge-gray')}</span>
+  </a>`).join('') || '<p class="muted-text" style="padding:0.75rem">No linked warrants found.</p>';
+
+  const body = `
+  <div class="page-header row-between">
+    <div>
+      <a class="back-link" href="/defendants">← Back to defendants</a>
+      <h1 class="page-title">${escapeHtml(d.fullName)}</h1>
+      <p class="page-sub">Defendant Record</p>
+    </div>
+    ${hasPerm(pl,'ag') ? `<form method="post" action="/defendants/${d.id}/delete"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete this record?')">Delete</button></form>` : ''}
+  </div>
+  <div class="detail-grid">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Personal Information</div>
+      <dl class="detail-list">
+        <dt>Full Name</dt><dd><strong>${escapeHtml(d.fullName)}</strong></dd>
+        <dt>Date of Birth</dt><dd>${fmtDate(d.dob)}</dd>
+        <dt>TX DL / ID #</dt><dd>${escapeHtml(d.id_number||'—')}</dd>
+        <dt>Race / Ethnicity</dt><dd>${escapeHtml(d.race||'—')}</dd>
+        <dt>Height</dt><dd>${escapeHtml(d.height||'—')}</dd>
+        <dt>Weight</dt><dd>${escapeHtml(d.weight||'—')}</dd>
+        <dt>Hair Color</dt><dd>${escapeHtml(d.hair||'—')}</dd>
+        <dt>Eye Color</dt><dd>${escapeHtml(d.eyes||'—')}</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Contact & Location</div>
+      <dl class="detail-list">
+        <dt>Address</dt><dd>${escapeHtml(d.address||'—')}</dd>
+        <dt>City</dt><dd>${escapeHtml(d.city||'—')}</dd>
+        <dt>County</dt><dd>${escapeHtml(d.county||'—')}${d.county?' County, TX':''}</dd>
+        <dt>Phone</dt><dd>${escapeHtml(d.phone||'—')}</dd>
+        <dt>Added By</dt><dd>${escapeHtml(d.createdBy)}</dd>
+        <dt>Date Added</dt><dd>${fmtDate(d.createdAt)}</dd>
+      </dl>
+      ${d.notes ? `<div class="card-title" style="margin-top:1rem;margin-bottom:0.5rem">Notes</div><p class="case-notes-text">${escapeHtml(d.notes).replace(/\n/g,'<br/>')}</p>` : ''}
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Cases (${linkedCases.length})</span></div>
+      <div class="table-rows">${caseRows}</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Warrants (${linkedWarrants.length})</span></div>
+      <div class="table-rows">${warrantRows}</div>
+    </div>
+  </div>`;
+  return res.send(layout({ title: `${d.fullName} — DOJ`, body, user: req.session.user, page: 'defendants' }));
+});
+
+app.post('/defendants/:id/delete', requirePerm('ag'), (req, res) => {
+  let defendants = readJSON(DEFENDANTS_FILE);
+  defendants = defendants.filter(x=>x.id!==req.params.id);
+  writeJSON(DEFENDANTS_FILE, defendants);
+  return res.redirect('/defendants');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// SUBPOENAS
+// ════════════════════════════════════════════════════════════════════════════
+
+app.get('/subpoenas', requirePerm('clerk'), (req, res) => {
+  const { q='', status='' } = req.query;
+  const pl = req.session.user.permLevel;
+  let subpoenas = readJSON(SUBPOENAS_FILE);
+  if (q)      subpoenas = subpoenas.filter(s => [s.subpoenaNumber,s.recipient,s.issuedBy,s.purpose].join(' ').toLowerCase().includes(q.toLowerCase()));
+  if (status) subpoenas = subpoenas.filter(s => s.status === status);
+
+  const rows = subpoenas.map(s => `
+  <a class="table-row-link" href="/subpoenas/${s.id}" style="--cols:5">
+    <span class="tr-cell mono">${escapeHtml(s.subpoenaNumber)}</span>
+    <span class="tr-cell fw">${escapeHtml(s.recipient)}</span>
+    <span class="tr-cell">${badge(s.type||'testimony','badge-blue')}</span>
+    <span class="tr-cell">${badge(s.status, SUBPOENA_STATUS_CLASS[s.status]||'badge-gray')}</span>
+    <span class="tr-cell muted-text">${fmtDate(s.dueDate)}</span>
+  </a>`).join('') || '<p class="muted-text" style="padding:1.5rem">No subpoenas found.</p>';
+
+  const body = `
+  <div class="page-header row-between">
+    <div><h1 class="page-title">Subpoenas</h1><p class="page-sub">${subpoenas.length} subpoena${subpoenas.length!==1?'s':''} found.</p></div>
+    ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/subpoenas/new">+ Issue Subpoena</a>` : ''}
+  </div>
+  <div class="card" style="margin-bottom:1rem">
+    <form method="get" class="filter-row">
+      <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search by recipient or subpoena #…"/>
+      <select class="input-sm" name="status"><option value="">All statuses</option>${['pending','served','failed','quashed'].map(s=>`<option value="${s}" ${status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}</select>
+      <button class="btn-primary" type="submit">Filter</button>
+      <a class="btn-sm" href="/subpoenas">Reset</a>
+    </form>
+  </div>
+  <div class="card">
+    <div class="table-header" style="grid-template-columns:1fr 1.5fr 1fr 1fr 1fr"><span>Subpoena #</span><span>Recipient</span><span>Type</span><span>Status</span><span>Due Date</span></div>
+    <div class="table-rows">${rows}</div>
+  </div>`;
+  return res.send(layout({ title: 'Subpoenas — DOJ', body, user: req.session.user, page: 'subpoenas' }));
+});
+
+app.get('/subpoenas/new', requirePerm('lawyer'), (req, res) => {
+  const { caseId='' } = req.query;
+  const cases = readJSON(CASES_FILE);
+  const caseOptions = cases.map(c=>`<option value="${c.id}" ${caseId===c.id?'selected':''}>${escapeHtml(c.caseNumber)} — ${escapeHtml(c.title)}</option>`).join('');
+  const body = `
+  <div class="page-header"><a class="back-link" href="/subpoenas">← Back</a><h1 class="page-title">Issue Subpoena</h1></div>
+  <div class="card">
+    <form method="post" action="/subpoenas">
+      <div class="form-grid">
+        <div class="form-group"><label>Recipient Name <span class="req">*</span></label><input class="input" name="recipient" required placeholder="Full name of person or entity"/></div>
+        <div class="form-group"><label>Subpoena Type</label><select class="input" name="type"><option value="testimony">Testimony (Ad Testificandum)</option><option value="documents">Documents (Duces Tecum)</option><option value="both">Testimony & Documents</option></select></div>
+        <div class="form-group"><label>Linked Case</label><select class="input" name="linkedCaseId"><option value="">— None —</option>${caseOptions}</select></div>
+        <div class="form-group"><label>Due Date / Appear By <span class="req">*</span></label><input class="input" type="date" name="dueDate" required/></div>
+        <div class="form-group"><label>Hearing Location</label><input class="input" name="location" placeholder="Court address or meeting point"/></div>
+        <div class="form-group"><label>Issued By (Attorney)</label><input class="input" name="issuedBy" value="${escapeHtml(req.session.user.username)}"/></div>
+      </div>
+      <div class="form-group"><label>Purpose / Instructions <span class="req">*</span></label><textarea class="input" name="purpose" rows="3" required placeholder="What is required of the recipient?"></textarea></div>
+      <div class="form-actions"><button class="btn-primary" type="submit">Issue Subpoena</button><a class="btn-sm" href="/subpoenas">Cancel</a></div>
+    </form>
+  </div>`;
+  return res.send(layout({ title: 'Issue Subpoena — DOJ', body, user: req.session.user, page: 'subpoenas' }));
+});
+
+app.post('/subpoenas', requirePerm('lawyer'), (req, res) => {
+  const { recipient, type, linkedCaseId, dueDate, location, issuedBy, purpose } = req.body;
+  if (!recipient || !dueDate || !purpose) return res.status(400).send('Missing required fields.');
+  const subpoenas = readJSON(SUBPOENAS_FILE);
+  const s = {
+    id: newId(), subpoenaNumber: nextSubpoenaNumber(),
+    recipient, type: type||'testimony', linkedCaseId: linkedCaseId||'',
+    dueDate, location: location||'', issuedBy: issuedBy||req.session.user.username,
+    purpose, status: 'pending', createdAt: new Date().toISOString()
+  };
+  subpoenas.unshift(s);
+  writeJSON(SUBPOENAS_FILE, subpoenas);
+  logActivity('subpoena_issued', `Subpoena ${s.subpoenaNumber} issued to ${recipient}`, req.session.user.username);
+  return res.redirect(`/subpoenas/${s.id}`);
+});
+
+app.get('/subpoenas/:id', requirePerm('clerk'), (req, res) => {
+  const subpoenas = readJSON(SUBPOENAS_FILE);
+  const s = subpoenas.find(x => x.id === req.params.id);
+  if (!s) return res.status(404).send('Subpoena not found.');
+  const pl = req.session.user.permLevel;
+  const linkedCase = s.linkedCaseId ? readJSON(CASES_FILE).find(c => c.id === s.linkedCaseId) : null;
+  const canWrite = hasPerm(pl,'lawyer');
+
+  const body = `
+  <div class="page-header row-between">
+    <div>
+      <a class="back-link" href="/subpoenas">← Back to subpoenas</a>
+      <h1 class="page-title">Subpoena — ${escapeHtml(s.subpoenaNumber)}</h1>
+      <div class="badge-row">
+        ${badge(s.status, SUBPOENA_STATUS_CLASS[s.status]||'badge-gray')}
+        ${badge(s.type||'testimony','badge-blue')}
+      </div>
+    </div>
+    <div class="btn-group">
+      ${canWrite && s.status==='pending' ? `<form method="post" action="/subpoenas/${s.id}/serve"><button class="btn-primary" type="submit">Mark Served</button></form>` : ''}
+      ${canWrite && s.status==='pending' ? `<form method="post" action="/subpoenas/${s.id}/quash"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Quash this subpoena?')">Quash</button></form>` : ''}
+      ${hasPerm(pl,'ag') ? `<form method="post" action="/subpoenas/${s.id}/delete"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete?')">Delete</button></form>` : ''}
+    </div>
+  </div>
+  <div class="card">
+    <dl class="detail-list">
+      <dt>Subpoena #</dt><dd class="mono">${escapeHtml(s.subpoenaNumber)}</dd>
+      <dt>Recipient</dt><dd><strong>${escapeHtml(s.recipient)}</strong></dd>
+      <dt>Type</dt><dd>${escapeHtml(s.type||'—')}</dd>
+      <dt>Due Date</dt><dd>${fmtDate(s.dueDate)}</dd>
+      <dt>Location</dt><dd>${escapeHtml(s.location||'—')}</dd>
+      <dt>Issued By</dt><dd>${escapeHtml(s.issuedBy)}</dd>
+      <dt>Filed</dt><dd>${fmtDate(s.createdAt)}</dd>
+      ${linkedCase ? `<dt>Linked Case</dt><dd><a class="link" href="/cases/${linkedCase.id}">${escapeHtml(linkedCase.caseNumber)} — ${escapeHtml(linkedCase.title)}</a></dd>` : ''}
+    </dl>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Purpose / Instructions</div>
+    <p class="case-notes-text">${escapeHtml(s.purpose||'').replace(/\n/g,'<br/>')}</p>
+  </div>`;
+  return res.send(layout({ title: `${s.subpoenaNumber} — DOJ`, body, user: req.session.user, page: 'subpoenas' }));
+});
+
+app.post('/subpoenas/:id/serve', requirePerm('lawyer'), (req, res) => {
+  const subpoenas = readJSON(SUBPOENAS_FILE);
+  const idx = subpoenas.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  subpoenas[idx].status = 'served';
+  writeJSON(SUBPOENAS_FILE, subpoenas);
+  return res.redirect(`/subpoenas/${req.params.id}`);
+});
+
+app.post('/subpoenas/:id/quash', requirePerm('lawyer'), (req, res) => {
+  const subpoenas = readJSON(SUBPOENAS_FILE);
+  const idx = subpoenas.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  subpoenas[idx].status = 'quashed';
+  writeJSON(SUBPOENAS_FILE, subpoenas);
+  return res.redirect(`/subpoenas/${req.params.id}`);
+});
+
+app.post('/subpoenas/:id/delete', requirePerm('ag'), (req, res) => {
+  let subpoenas = readJSON(SUBPOENAS_FILE);
+  subpoenas = subpoenas.filter(x=>x.id!==req.params.id);
+  writeJSON(SUBPOENAS_FILE, subpoenas);
+  return res.redirect('/subpoenas');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// COURT CALENDAR
+// ════════════════════════════════════════════════════════════════════════════
+
+app.get('/calendar', requirePerm('clerk'), (req, res) => {
+  const { month='' } = req.query;
+  const cases = readJSON(CASES_FILE);
+  const today = new Date();
+  const targetDate = month ? new Date(month + '-01') : new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+  const monthEnd   = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+
+  const prevMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() - 1, 1);
+  const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+
+  const hearings = cases.filter(c => c.courtDate && new Date(c.courtDate) >= monthStart && new Date(c.courtDate) <= monthEnd)
+    .sort((a,b) => new Date(a.courtDate)-new Date(b.courtDate));
+  const trials = cases.filter(c => c.trialDate && new Date(c.trialDate) >= monthStart && new Date(c.trialDate) <= monthEnd)
+    .sort((a,b) => new Date(a.trialDate)-new Date(b.trialDate));
+
+  const hearingRows = hearings.map(c => `
+  <div class="calendar-event hearing">
+    <div class="cal-event-date">${fmtDate(c.courtDate)}</div>
+    <div class="cal-event-body">
+      <a class="cal-event-title" href="/cases/${c.id}">${escapeHtml(c.caseNumber)} — ${escapeHtml(c.title)}</a>
+      <div class="cal-event-meta">${badge('Hearing','badge-blue')} ${escapeHtml(c.courtType||'')} · ${escapeHtml(c.county||'')} County · ${escapeHtml(c.subject)}</div>
+    </div>
+  </div>`).join('') || '<p class="muted-text" style="padding:1rem">No hearings scheduled this month.</p>';
+
+  const trialRows = trials.map(c => `
+  <div class="calendar-event trial">
+    <div class="cal-event-date">${fmtDate(c.trialDate)}</div>
+    <div class="cal-event-body">
+      <a class="cal-event-title" href="/cases/${c.id}">${escapeHtml(c.caseNumber)} — ${escapeHtml(c.title)}</a>
+      <div class="cal-event-meta">${badge('Trial','badge-purple')} ${escapeHtml(c.courtType||'')} · ${escapeHtml(c.county||'')} County · ${escapeHtml(c.subject)}</div>
+    </div>
+  </div>`).join('') || '<p class="muted-text" style="padding:1rem">No trials scheduled this month.</p>';
+
+  const monthLabel = targetDate.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+
+  const body = `
+  <div class="page-header row-between">
+    <div><h1 class="page-title">Court Calendar</h1><p class="page-sub">State of Texas — Department of Justice</p></div>
+    <div class="btn-group">
+      <a class="btn-sm" href="/calendar?month=${fmt(prevMonth)}">← Previous</a>
+      <span style="font-weight:600;padding:0 0.5rem">${monthLabel}</span>
+      <a class="btn-sm" href="/calendar?month=${fmt(nextMonth)}">Next →</a>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Hearings (${hearings.length})</span></div>
+      <div>${hearingRows}</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Trials (${trials.length})</span></div>
+      <div>${trialRows}</div>
+    </div>
+  </div>`;
+  return res.send(layout({ title: `Calendar — DOJ`, body, user: req.session.user, page: 'calendar' }));
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// DOCUMENTS (Discord channel file storage)
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/channels', requirePerm('clerk'), async (req, res) => {
   const user = req.session.user;
-  let channels=[], error=null;
-  if (!config.botToken||!config.guildId) {
-    error='Set <code>DISCORD_BOT_TOKEN</code> and <code>DISCORD_GUILD_ID</code> to load document channels.';
-  } else {
-    try {
-      const { roleIds, isAdmin } = await fetchMemberInfo(user.id);
-      channels = await getAccessibleChannels(user.id, roleIds, isAdmin);
-    } catch(e) { error=`Could not load channels: ${escapeHtml(e.message)}`; }
+  let channels = [];
+  try {
+    channels = await getAccessibleChannels(user.id, user.roleIds || [], user.isAdmin || false);
+  } catch {}
+
+  if (!channels.length) {
+    const body = `
+    <div class="page-header"><h1 class="page-title">Documents</h1></div>
+    <div class="empty-state"><p>No document channels configured. Ensure your bot is set up and channels are prefixed with <code>dc-</code>.</p></div>`;
+    return res.send(layout({ title: 'Documents — DOJ', body, user, page: 'channels' }));
   }
-  const cards = channels.map(ch => {
+
+  const channelCards = channels.map(ch => {
     const files = getChannelFiles(ch.id);
-    return `<a class="channel-card" href="/channels/${ch.id}">
-      <div class="channel-info"><div class="channel-name">${escapeHtml(formatChannelName(ch.name))}</div><div class="channel-meta">${files.length} document${files.length!==1?'s':''}</div></div>
-      <svg class="channel-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    return `
+    <a class="channel-card" href="/channels/${ch.id}">
+      <div class="channel-info">
+        <div class="channel-name">${escapeHtml(formatChannelName(ch.name))}</div>
+        <div class="channel-meta">${files.length} file${files.length!==1?'s':''}</div>
+      </div>
+      <span class="channel-arrow">→</span>
     </a>`;
   }).join('');
+
   const body = `
-  <div class="page-header"><h1 class="page-title">Documents</h1><p class="page-sub">Channels starting with <code>dc-</code> that you have access to in Discord.</p></div>
-  ${error?`<div class="alert-box">${error}</div>`:''}
-  ${channels.length===0&&!error?`<div class="empty-state"><p>No accessible <code>dc-</code> channels found.</p></div>`:`<div class="channel-list">${cards}</div>`}`;
-  return res.send(layout({ title: 'Documents — DOJ RP', body, user, page: 'channels' }));
+  <div class="page-header"><h1 class="page-title">Documents</h1><p class="page-sub">Files are organized by Discord case channel.</p></div>
+  <div class="channel-list">${channelCards}</div>`;
+  return res.send(layout({ title: 'Documents — DOJ', body, user, page: 'channels' }));
 });
 
 app.get('/channels/:channelId', requirePerm('clerk'), async (req, res) => {
   const user = req.session.user;
   const { channelId } = req.params;
-  if (config.botToken && config.guildId) {
-    try {
-      const { roleIds, isAdmin } = await fetchMemberInfo(user.id);
-      const accessible = await getAccessibleChannels(user.id, roleIds, isAdmin);
-      if (!accessible.find(ch=>ch.id===channelId))
-        return res.status(403).send(layout({ title:'Access Denied', body:'<div class="alert-box">You do not have access to this channel.</div>', user, page:'channels' }));
-    } catch(e) { return res.status(500).send(`Error: ${escapeHtml(e.message)}`); }
-  }
-  let resolvedName = `Channel ${channelId}`;
-  if (config.botToken) {
-    try {
-      const r = await fetch(`https://discord.com/api/channels/${channelId}`,{headers:{Authorization:`Bot ${config.botToken}`}});
-      if (r.ok) { const ch=await r.json(); resolvedName=formatChannelName(ch.name); }
-    } catch {}
-  }
+  let channels = [];
+  try { channels = await getAccessibleChannels(user.id, user.roleIds||[], user.isAdmin||false); } catch {}
+  const channel = channels.find(c => c.id === channelId);
+  const resolvedName = channel ? formatChannelName(channel.name) : channelId;
+
   const files = getChannelFiles(channelId);
   const fileRows = files.map(f => {
-    const ext = (path.extname(f.originalName).toLowerCase().replace('.','').toUpperCase()) || 'FILE';
+    const ext = path.extname(f.originalName).replace('.','').toUpperCase() || 'FILE';
     return `
     <div class="file-row">
-      <div class="file-ext">${ext}</div>
-      <div class="file-info"><div class="file-name">${escapeHtml(f.originalName)}</div><div class="file-meta">${formatSize(f.size)} · ${fmtDate(f.uploadedAt)}</div></div>
+      <div class="file-ext">${escapeHtml(ext)}</div>
+      <div class="file-info">
+        <div class="file-name">${escapeHtml(f.originalName)}</div>
+        <div class="file-meta">${formatSize(f.size)} · ${fmtDateTime(f.uploadedAt)}</div>
+      </div>
       <div class="file-actions">
-        <a class="btn-sm" href="/channels/${escapeHtml(channelId)}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a>
-        <form method="post" action="/channels/${escapeHtml(channelId)}/files/${encodeURIComponent(f.filename)}/delete" style="display:inline">
-          <button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete this file?')">Delete</button>
-        </form>
+        <a class="btn-sm" href="/channels/${channelId}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a>
+        ${hasPerm(user.permLevel,'clerk') ? `<form method="post" action="/channels/${channelId}/files/${encodeURIComponent(f.filename)}/delete" style="display:inline"><button class="btn-sm btn-danger" type="submit" onclick="return confirm('Delete file?')">Delete</button></form>` : ''}
       </div>
     </div>`;
   }).join('');
+
   const body = `
-  <div class="page-header"><a class="back-link" href="/channels">← Back to documents</a><h1 class="page-title">${escapeHtml(resolvedName)}</h1><p class="page-sub">${files.length} document${files.length!==1?'s':''}</p></div>
+  <div class="page-header row-between">
+    <div><a class="back-link" href="/channels">← Back to documents</a><h1 class="page-title">${escapeHtml(resolvedName)}</h1></div>
+  </div>
   <div class="upload-box">
-    <form method="post" action="/channels/${escapeHtml(channelId)}/upload" enctype="multipart/form-data">
+    <form method="post" action="/channels/${channelId}/upload" enctype="multipart/form-data">
       <label class="upload-label" for="fileInput">
         <div class="upload-text">Click to upload a file</div>
         <div class="upload-hint">Max 250 MB · Any file type</div>
@@ -1006,7 +1652,7 @@ app.get('/channels/:channelId', requirePerm('clerk'), async (req, res) => {
     </form>
   </div>
   <div class="file-list">${files.length===0?`<div class="empty-state"><p>No documents yet.</p></div>`:fileRows}</div>`;
-  return res.send(layout({ title: `${resolvedName} — DOJ RP`, body, user, page: 'channels' }));
+  return res.send(layout({ title: `${resolvedName} — DOJ`, body, user, page: 'channels' }));
 });
 
 app.post('/channels/:channelId/upload', requirePerm('clerk'), upload.single('file'), (req, res) => {
@@ -1029,7 +1675,7 @@ app.post('/channels/:channelId/files/:filename/delete', requirePerm('clerk'), (r
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// SEARCH  (results filtered by perm level)
+// SEARCH
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/search', ensureAuth, (req, res) => {
@@ -1037,15 +1683,16 @@ app.get('/search', ensureAuth, (req, res) => {
   const lq = q.toLowerCase().trim();
   const pl = req.session.user.permLevel;
 
-  let caseResults=[], warrantResults=[], fileResults=[];
+  let caseResults=[], warrantResults=[], subpoenaResults=[], defendantResults=[], fileResults=[];
   if (lq) {
     if (hasPerm(pl,'clerk')) {
-      const cases = readJSON(CASES_FILE);
-      caseResults = cases.filter(c => [c.caseNumber,c.title,c.subject,c.assignedOfficer,c.notes,...(c.charges||[])].join(' ').toLowerCase().includes(lq)).slice(0,10);
+      caseResults = readJSON(CASES_FILE).filter(c => [c.caseNumber,c.title,c.subject,c.assignedOfficer,c.prosecutor,c.defenseAttorney,c.notes,...(c.charges||[])].join(' ').toLowerCase().includes(lq)).slice(0,10);
+      subpoenaResults = readJSON(SUBPOENAS_FILE).filter(s => [s.subpoenaNumber,s.recipient,s.purpose].join(' ').toLowerCase().includes(lq)).slice(0,5);
+      defendantResults = readJSON(DEFENDANTS_FILE).filter(d => [d.fullName,d.address,d.id_number].join(' ').toLowerCase().includes(lq)).slice(0,5);
     }
     const warrants = readJSON(WARRANTS_FILE);
     const searchableWarrants = hasPerm(pl,'clerk') ? warrants : warrants.filter(w=>w.status==='active');
-    warrantResults = searchableWarrants.filter(w => [w.warrantNumber,w.subject,w.issuedBy,w.description].join(' ').toLowerCase().includes(lq)).slice(0,10);
+    warrantResults = searchableWarrants.filter(w => [w.warrantNumber,w.subject,w.issuedBy,w.judge,w.description].join(' ').toLowerCase().includes(lq)).slice(0,10);
 
     if (hasPerm(pl,'clerk') && fs.existsSync(UPLOADS_DIR)) {
       for (const dir of fs.readdirSync(UPLOADS_DIR)) {
@@ -1062,22 +1709,24 @@ app.get('/search', ensureAuth, (req, res) => {
       }
     }
   }
-  const total = caseResults.length + warrantResults.length + fileResults.length;
+  const total = caseResults.length + warrantResults.length + subpoenaResults.length + defendantResults.length + fileResults.length;
   const body = `
   <div class="page-header"><h1 class="page-title">Search</h1></div>
   <div class="card" style="margin-bottom:1.25rem">
     <form method="get" class="filter-row">
-      <input class="input" name="q" value="${escapeHtml(q)}" placeholder="Search ${hasPerm(pl,'clerk')?'cases, documents, and':'active'} warrants…" style="flex:1" autofocus/>
+      <input class="input" name="q" value="${escapeHtml(q)}" placeholder="Search cases, warrants, defendants, subpoenas, documents…" style="flex:1" autofocus/>
       <button class="btn-primary" type="submit">Search</button>
     </form>
   </div>
   ${lq?`<p class="muted-text" style="margin-bottom:1rem">${total} result${total!==1?'s':''} for "<strong>${escapeHtml(q)}</strong>"</p>`:''}
-  ${caseResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Cases (${caseResults.length})</div>${caseResults.map(c=>`<a class="table-row-link" href="/cases/${c.id}"><span class="tr-cell mono">${escapeHtml(c.caseNumber)}</span><span class="tr-cell fw">${escapeHtml(c.title)}</span><span class="tr-cell">${badge(c.status,CASE_STATUS_CLASS[c.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
-  ${warrantResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Warrants (${warrantResults.length})</div>${warrantResults.map(w=>`<a class="table-row-link" href="/warrants/${w.id}"><span class="tr-cell mono">${escapeHtml(w.warrantNumber)}</span><span class="tr-cell fw">${escapeHtml(w.subject)}</span><span class="tr-cell">${badge(w.status,WARRANT_STATUS_CLASS[w.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
+  ${caseResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Cases (${caseResults.length})</div>${caseResults.map(c=>`<a class="table-row-link" href="/cases/${c.id}" style="--cols:3"><span class="tr-cell mono">${escapeHtml(c.caseNumber)}</span><span class="tr-cell fw">${escapeHtml(c.title)}</span><span class="tr-cell">${badge(c.status,CASE_STATUS_CLASS[c.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
+  ${warrantResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Warrants (${warrantResults.length})</div>${warrantResults.map(w=>`<a class="table-row-link" href="/warrants/${w.id}" style="--cols:3"><span class="tr-cell mono">${escapeHtml(w.warrantNumber)}</span><span class="tr-cell fw">${escapeHtml(w.subject)}</span><span class="tr-cell">${badge(w.status,WARRANT_STATUS_CLASS[w.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
+  ${defendantResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Defendants (${defendantResults.length})</div>${defendantResults.map(d=>`<a class="table-row-link" href="/defendants/${d.id}" style="--cols:2"><span class="tr-cell fw">${escapeHtml(d.fullName)}</span><span class="tr-cell muted-text">${fmtDate(d.dob)}</span></a>`).join('')}</div>`:''}
+  ${subpoenaResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Subpoenas (${subpoenaResults.length})</div>${subpoenaResults.map(s=>`<a class="table-row-link" href="/subpoenas/${s.id}" style="--cols:3"><span class="tr-cell mono">${escapeHtml(s.subpoenaNumber)}</span><span class="tr-cell fw">${escapeHtml(s.recipient)}</span><span class="tr-cell">${badge(s.status,SUBPOENA_STATUS_CLASS[s.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
   ${fileResults.length?`<div class="card"><div class="card-title" style="margin-bottom:0.75rem">Documents (${fileResults.length})</div>${fileResults.map(f=>`<div class="file-row"><div class="file-ext">FILE</div><div class="file-info"><div class="file-name">${escapeHtml(f.originalName)}</div><div class="file-meta">${formatSize(f.size)}</div></div><a class="btn-sm" href="/channels/${f.channelId}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a></div>`).join('')}</div>`:''}
   ${lq&&total===0?`<div class="empty-state"><p>No results for "<strong>${escapeHtml(q)}</strong>".</p></div>`:''}
-  ${!lq?`<div class="empty-state"><p>Enter a search term above.</p></div>`:''}`;
-  return res.send(layout({ title: 'Search — DOJ RP', body, user: req.session.user, page: 'search' }));
+  ${!lq?`<div class="empty-state"><p>Enter a search term above to search across all records.</p></div>`:''}`;
+  return res.send(layout({ title: 'Search — DOJ', body, user: req.session.user, page: 'search' }));
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`DOJ RP Portal running at http://0.0.0.0:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`DOJ Portal running at http://0.0.0.0:${PORT}`));
