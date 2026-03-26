@@ -1,5 +1,19 @@
 [
   {
+    "id": "f71c704fddaa067d",
+    "type": "warrant_issued",
+    "description": "Warrant W-2026-0001 approved from request WR-2026-0001 — Tim Bradford",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T14:22:26.128Z"
+  },
+  {
+    "id": "eb5e6ede6a2dae42",
+    "type": "warrant_issued",
+    "description": "Warrant request WR-2026-0001 submitted for Tim Bradford",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T14:22:14.451Z"
+  },
+  {
     "id": "108eee590c186e8f",
     "type": "case_updated",
     "description": "Case DOJ-2026-0001 deleted",

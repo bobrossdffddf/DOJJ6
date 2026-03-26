@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "id": "7857488a90f4877f",
+    "requestNumber": "WR-2026-0001",
+    "requesterId": "848356730256883744",
+    "requesterUsername": "justawacko_",
+    "requesterDisplay": "justawacko_",
+    "contact": "justawacko_",
+    "subject": "Tim Bradford",
+    "type": "arrest",
+    "county": "Tarrant",
+    "incidentDate": "2026-03-26",
+    "reason": "dsadsd",
+    "status": "approved",
+    "createdAt": "2026-03-26T14:22:14.451Z",
+    "reviewedBy": "justawacko_",
+    "reviewedAt": "2026-03-26T14:22:26.127Z",
+    "reviewNote": "",
+    "linkedWarrantId": "f18155016d58a96f"
+  }
+]

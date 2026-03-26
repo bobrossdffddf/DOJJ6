@@ -75,64 +75,57 @@ async function registerCommands() {
 }
 
 // ── Embed builders ────────────────────────────────────────────────────────────
-const STATUS_EMOJI_W = { active: '🟢', executed: '⚫', expired: '🔴', cancelled: '🔴' };
-const STATUS_EMOJI_C = { open: '🟢', investigation: '🔵', pending: '🟡', filed: '🟣', closed: '⚫', dismissed: '🔴' };
-const PRIORITY_EMOJI = { low: '🔵', medium: '🟡', high: '🟠', critical: '🔴' };
-
 function buildWarrantEmbed(w) {
   const color = { active: 0x22c55e, executed: 0x6b7280, expired: 0xef4444, cancelled: 0xef4444 };
-  const emoji = STATUS_EMOJI_W[w.status] || '⚠️';
   return new EmbedBuilder()
-    .setTitle(`${emoji} ${cap(w.type)} Warrant — ${w.warrantNumber}`)
+    .setTitle(`${cap(w.type)} Warrant — ${w.warrantNumber}`)
     .setColor(color[w.status] || 0x6b7280)
     .setDescription(
-      `## Subject: ${w.subject}\n` +
-      `**Status:** ${emoji} ${cap(w.status)}　**Type:** ${cap(w.type)} Warrant`
+      `**Subject:** ${w.subject}\n` +
+      `**Status:** ${cap(w.status)}  |  **Type:** ${cap(w.type)} Warrant`
     )
     .addFields(
-      { name: '🏛️ County',        value: w.county ? `${w.county} County, TX` : 'N/A',  inline: true },
-      { name: '👨‍⚖️ Issuing Judge', value: w.judge || 'N/A',                             inline: true },
-      { name: '🖊️ Issued By',      value: w.issuedBy || 'N/A',                          inline: true },
-      { name: '📅 Issue Date',     value: fmtDate(w.issuedAt),                          inline: true },
-      { name: '⏳ Expires',        value: fmtDate(w.expiresAt),                         inline: true },
-      { name: '🎂 Subject DOB',    value: fmtDate(w.subjectDob),                        inline: true },
-      { name: '📍 Last Known Address', value: w.address || 'N/A',                       inline: false },
-      { name: '👤 Physical Description', value: w.subjectDescription || 'N/A',          inline: false },
-      { name: '📋 Probable Cause', value: (w.description || 'N/A').slice(0, 1024),      inline: false }
+      { name: 'County',              value: w.county ? `${w.county} County, TX` : 'N/A', inline: true },
+      { name: 'Issuing Judge',       value: w.judge || 'N/A',                             inline: true },
+      { name: 'Issued By',           value: w.issuedBy || 'N/A',                          inline: true },
+      { name: 'Issue Date',          value: fmtDate(w.issuedAt),                          inline: true },
+      { name: 'Expires',             value: fmtDate(w.expiresAt),                         inline: true },
+      { name: 'Subject DOB',         value: fmtDate(w.subjectDob),                        inline: true },
+      { name: 'Last Known Address',  value: w.address || 'N/A',                           inline: false },
+      { name: 'Physical Description',value: w.subjectDescription || 'N/A',                inline: false },
+      { name: 'Probable Cause',      value: (w.description || 'N/A').slice(0, 1024),      inline: false }
     )
-    .setFooter({ text: '🦅 State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice' })
     .setTimestamp();
 }
 
 function buildCaseEmbed(c) {
   const color = { open: 0x22c55e, investigation: 0x3b82f6, pending: 0xeab308, filed: 0x7c3aed, closed: 0x6b7280, dismissed: 0xef4444 };
-  const emoji = STATUS_EMOJI_C[c.status] || '📁';
-  const priEmoji = PRIORITY_EMOJI[c.priority] || '🟡';
-  const chargesText = (c.charges || []).slice(0, 6).map(ch => `▸ ${ch}`).join('\n') || 'None listed';
+  const chargesText = (c.charges || []).slice(0, 6).map(ch => `- ${ch}`).join('\n') || 'None listed';
   const bond = c.bondAmount != null && c.bondAmount !== '' ? `$${Number(c.bondAmount).toLocaleString()}` : 'N/A';
   const fields = [
-    { name: '📋 Status',          value: `${emoji} ${cap(c.status)}`,                  inline: true },
-    { name: '⚡ Priority',         value: `${priEmoji} ${cap(c.priority)||'Medium'}`,   inline: true },
-    { name: '⚖️ Grade',            value: c.caseGrade || 'N/A',                         inline: true },
-    { name: '🏛️ County',           value: c.county ? `${c.county} County, TX` : 'N/A', inline: true },
-    { name: '🏛️ Court',            value: c.courtType || 'N/A',                         inline: true },
-    { name: '📝 Plea',             value: cap(c.plea) || 'Not Entered',                 inline: true },
-    { name: '🧑‍⚖️ Verdict',          value: cap(c.verdict) || 'Pending',                 inline: true },
-    { name: '💰 Bond / Bail',      value: bond,                                         inline: true },
-    { name: '📅 Hearing Date',     value: fmtDate(c.courtDate),                         inline: true },
-    { name: '👨‍⚖️ Presiding Judge',  value: c.presidingJudge || 'N/A',                   inline: true },
-    { name: '👔 Prosecutor',       value: c.prosecutor || 'N/A',                        inline: true },
-    { name: '🛡️ Defense Counsel',  value: c.defenseAttorney || 'N/A',                  inline: true },
-    { name: '🚔 Lead Officer',     value: c.assignedOfficer || 'N/A',                  inline: true },
-    { name: '📌 Charges Filed', value: chargesText.slice(0, 1024) },
+    { name: 'Status',          value: cap(c.status),                                inline: true },
+    { name: 'Priority',        value: cap(c.priority) || 'Medium',                  inline: true },
+    { name: 'Grade',           value: c.caseGrade || 'N/A',                         inline: true },
+    { name: 'County',          value: c.county ? `${c.county} County, TX` : 'N/A', inline: true },
+    { name: 'Court',           value: c.courtType || 'N/A',                         inline: true },
+    { name: 'Plea',            value: cap(c.plea) || 'Not Entered',                 inline: true },
+    { name: 'Verdict',         value: cap(c.verdict) || 'Pending',                  inline: true },
+    { name: 'Bond / Bail',     value: bond,                                          inline: true },
+    { name: 'Hearing Date',    value: fmtDate(c.courtDate),                          inline: true },
+    { name: 'Presiding Judge', value: c.presidingJudge || 'N/A',                    inline: true },
+    { name: 'Prosecutor',      value: c.prosecutor || 'N/A',                         inline: true },
+    { name: 'Defense Counsel', value: c.defenseAttorney || 'N/A',                   inline: true },
+    { name: 'Lead Officer',    value: c.assignedOfficer || 'N/A',                   inline: true },
+    { name: 'Charges Filed',   value: chargesText.slice(0, 1024) },
   ];
-  if (c.sentence) fields.push({ name: '⛓️ Sentence', value: c.sentence.slice(0, 512) });
+  if (c.sentence) fields.push({ name: 'Sentence', value: c.sentence.slice(0, 512) });
   return new EmbedBuilder()
-    .setTitle(`${emoji} Case ${c.caseNumber} — ${c.title}`)
+    .setTitle(`Case ${c.caseNumber} — ${c.title}`)
     .setColor(color[c.status] || 0x6b7280)
-    .setDescription(`## Defendant: ${c.subject}\n**Case Type:** ${cap(c.type||'Criminal')}`)
+    .setDescription(`**Defendant:** ${c.subject}\n**Case Type:** ${cap(c.type||'Criminal')}`)
     .addFields(...fields)
-    .setFooter({ text: '🦅 State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice' })
     .setTimestamp();
 }
 
