@@ -307,7 +307,25 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-// ── Text command handler ($git restart, $refresh) ──────────────────────────
+// ── Text command handler (owner-only, ephemeral via DM) ───────────────────
+async function ownerDM(message, text) {
+  try { await message.delete(); } catch (_) {}
+  try {
+    await message.author.send(text);
+  } catch (_) {
+    const tmp = await message.channel.send(text).catch(() => null);
+    if (tmp) setTimeout(() => tmp.delete().catch(() => {}), 15000);
+  }
+}
+
+function runCmd(cmd) {
+  return new Promise(resolve => {
+    exec(cmd, (err, stdout, stderr) => {
+      resolve({ err, stdout: stdout.trim(), stderr: stderr.trim() });
+    });
+  });
+}
+
 client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
   if (message.author.id !== OWNER_ID) return;
@@ -315,24 +333,51 @@ client.on(Events.MessageCreate, async message => {
   const content = message.content.trim();
 
   if (content === '$git restart') {
-    await message.reply('Pulling latest code and restarting the server…');
-    exec('git pull && npm install --production && systemctl restart doj-portal', (err, stdout, stderr) => {
-      if (err) {
-        message.reply(`Restart failed:\n\`\`\`\n${stderr || err.message}\n\`\`\``).catch(() => {});
-      } else {
-        message.reply(`Done.\n\`\`\`\n${stdout.slice(0, 1800)}\n\`\`\``).catch(() => {});
-      }
-    });
+    await ownerDM(message, 'Pulling latest code and restarting the server…');
+    const { err, stdout, stderr } = await runCmd('git pull && npm install --production && systemctl restart doj-portal');
+    if (err) {
+      await message.author.send(`Restart failed:\n\`\`\`\n${(stderr || err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
+    } else {
+      await message.author.send(`Done.\n\`\`\`\n${stdout.slice(0, 1800)}\n\`\`\``).catch(() => {});
+    }
+    return;
+  }
+
+  if (content === '$git stash') {
+    await ownerDM(message, 'Running git stash…');
+    const { err, stdout, stderr } = await runCmd('git stash');
+    if (err) {
+      await message.author.send(`git stash failed:\n\`\`\`\n${(stderr || err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
+    } else {
+      await message.author.send(`\`\`\`\n${stdout || 'No local changes to save.'}\n\`\`\``).catch(() => {});
+    }
+    return;
+  }
+
+  if (content === '$git v') {
+    const [branch, log, status, gitver] = await Promise.all([
+      runCmd('git branch --show-current'),
+      runCmd('git log --oneline -5'),
+      runCmd('git status --short'),
+      runCmd('git --version')
+    ]);
+    const out = [
+      `**${gitver.stdout}**`,
+      `**Branch:** ${branch.stdout || 'unknown'}`,
+      `**Recent commits:**\n\`\`\`\n${log.stdout || 'none'}\n\`\`\``,
+      status.stdout ? `**Working tree:**\n\`\`\`\n${status.stdout.slice(0, 800)}\n\`\`\`` : '**Working tree:** clean'
+    ].join('\n');
+    await ownerDM(message, out);
     return;
   }
 
   if (content === '$refresh') {
-    await message.reply('Refreshing Discord embeds…');
+    await ownerDM(message, 'Refreshing Discord embeds…');
     try {
       await refreshEmbeds();
-      message.reply('Embeds updated.').catch(() => {});
+      await message.author.send('Embeds updated.').catch(() => {});
     } catch (err) {
-      message.reply(`Refresh failed: ${err.message}`).catch(() => {});
+      await message.author.send(`Refresh failed: ${err.message}`).catch(() => {});
     }
   }
 });
