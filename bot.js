@@ -11,13 +11,17 @@ const { exec } = require('child_process');
 
 const OWNER_ID = '848356730256883744';
 
-const DATA_DIR        = path.join(__dirname, 'data');
-const CASES_FILE      = path.join(DATA_DIR, 'cases.json');
-const WARRANTS_FILE   = path.join(DATA_DIR, 'warrants.json');
-const BOT_CONFIG_FILE = path.join(DATA_DIR, 'bot_config.json');
+const DATA_DIR           = path.join(__dirname, 'data');
+const CASES_FILE         = path.join(DATA_DIR, 'cases.json');
+const WARRANTS_FILE      = path.join(DATA_DIR, 'warrants.json');
+const DEFENDANTS_FILE    = path.join(DATA_DIR, 'defendants.json');
+const BOT_CONFIG_FILE    = path.join(DATA_DIR, 'bot_config.json');
 
 function readJSON(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; }
+}
+function writeJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 function readConfig() {
   try { return JSON.parse(fs.readFileSync(BOT_CONFIG_FILE, 'utf8')); } catch { return {}; }
@@ -25,6 +29,7 @@ function readConfig() {
 function writeConfig(data) {
   fs.writeFileSync(BOT_CONFIG_FILE, JSON.stringify(data, null, 2));
 }
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function fmtDate(d) {
   if (!d) return 'N/A';
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -70,53 +75,64 @@ async function registerCommands() {
 }
 
 // ── Embed builders ────────────────────────────────────────────────────────────
+const STATUS_EMOJI_W = { active: '🟢', executed: '⚫', expired: '🔴', cancelled: '🔴' };
+const STATUS_EMOJI_C = { open: '🟢', investigation: '🔵', pending: '🟡', filed: '🟣', closed: '⚫', dismissed: '🔴' };
+const PRIORITY_EMOJI = { low: '🔵', medium: '🟡', high: '🟠', critical: '🔴' };
+
 function buildWarrantEmbed(w) {
-  const statusColor = { active: 0x22c55e, executed: 0x6b7280, expired: 0xef4444, cancelled: 0xef4444 };
+  const color = { active: 0x22c55e, executed: 0x6b7280, expired: 0xef4444, cancelled: 0xef4444 };
+  const emoji = STATUS_EMOJI_W[w.status] || '⚠️';
   return new EmbedBuilder()
-    .setTitle(`${cap(w.type)} Warrant — ${w.warrantNumber}`)
-    .setColor(statusColor[w.status] || 0x6b7280)
-    .setDescription(`**Subject:** ${w.subject}`)
-    .addFields(
-      { name: 'Status',         value: cap(w.status),                               inline: true },
-      { name: 'County',         value: w.county ? `${w.county} County, TX` : 'N/A', inline: true },
-      { name: 'Issuing Judge',  value: w.judge || 'N/A',                            inline: true },
-      { name: 'Issued By',      value: w.issuedBy || 'N/A',                         inline: true },
-      { name: 'Issue Date',     value: fmtDate(w.issuedAt),                         inline: true },
-      { name: 'Expires',        value: fmtDate(w.expiresAt),                        inline: true },
-      { name: 'DOB',            value: fmtDate(w.subjectDob),                       inline: true },
-      { name: 'Description',    value: w.subjectDescription || 'N/A',               inline: true },
-      { name: 'Address',        value: w.address || 'N/A',                          inline: true },
-      { name: 'Probable Cause', value: (w.description || 'N/A').slice(0, 1024) }
+    .setTitle(`${emoji} ${cap(w.type)} Warrant — ${w.warrantNumber}`)
+    .setColor(color[w.status] || 0x6b7280)
+    .setDescription(
+      `## Subject: ${w.subject}\n` +
+      `**Status:** ${emoji} ${cap(w.status)}　**Type:** ${cap(w.type)} Warrant`
     )
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .addFields(
+      { name: '🏛️ County',        value: w.county ? `${w.county} County, TX` : 'N/A',  inline: true },
+      { name: '👨‍⚖️ Issuing Judge', value: w.judge || 'N/A',                             inline: true },
+      { name: '🖊️ Issued By',      value: w.issuedBy || 'N/A',                          inline: true },
+      { name: '📅 Issue Date',     value: fmtDate(w.issuedAt),                          inline: true },
+      { name: '⏳ Expires',        value: fmtDate(w.expiresAt),                         inline: true },
+      { name: '🎂 Subject DOB',    value: fmtDate(w.subjectDob),                        inline: true },
+      { name: '📍 Last Known Address', value: w.address || 'N/A',                       inline: false },
+      { name: '👤 Physical Description', value: w.subjectDescription || 'N/A',          inline: false },
+      { name: '📋 Probable Cause', value: (w.description || 'N/A').slice(0, 1024),      inline: false }
+    )
+    .setFooter({ text: '🦅 State of Texas — Department of Justice' })
     .setTimestamp();
 }
 
 function buildCaseEmbed(c) {
-  const statusColor = { open: 0x22c55e, investigation: 0x3b82f6, pending: 0xeab308, filed: 0x7c3aed, closed: 0x6b7280, dismissed: 0xef4444 };
-  const chargesText = (c.charges || []).slice(0, 5).join('\n') || 'None listed';
+  const color = { open: 0x22c55e, investigation: 0x3b82f6, pending: 0xeab308, filed: 0x7c3aed, closed: 0x6b7280, dismissed: 0xef4444 };
+  const emoji = STATUS_EMOJI_C[c.status] || '📁';
+  const priEmoji = PRIORITY_EMOJI[c.priority] || '🟡';
+  const chargesText = (c.charges || []).slice(0, 6).map(ch => `▸ ${ch}`).join('\n') || 'None listed';
+  const bond = c.bondAmount != null && c.bondAmount !== '' ? `$${Number(c.bondAmount).toLocaleString()}` : 'N/A';
   const fields = [
-    { name: 'Status',          value: cap(c.status),                                inline: true },
-    { name: 'Priority',        value: cap(c.priority) || 'Medium',                  inline: true },
-    { name: 'Grade',           value: c.caseGrade || 'N/A',                         inline: true },
-    { name: 'County',          value: c.county ? `${c.county} County, TX` : 'N/A', inline: true },
-    { name: 'Court',           value: c.courtType || 'N/A',                         inline: true },
-    { name: 'Plea',            value: c.plea || 'Not Entered',                      inline: true },
-    { name: 'Verdict',         value: c.verdict || 'Pending',                       inline: true },
-    { name: 'Bond / Bail',     value: c.bondAmount != null && c.bondAmount !== '' ? `$${Number(c.bondAmount).toLocaleString()}` : 'N/A', inline: true },
-    { name: 'Hearing Date',    value: fmtDate(c.courtDate),                         inline: true },
-    { name: 'Presiding Judge', value: c.presidingJudge || 'N/A',                   inline: true },
-    { name: 'Prosecutor',      value: c.prosecutor || 'N/A',                        inline: true },
-    { name: 'Defense Counsel', value: c.defenseAttorney || 'N/A',                  inline: true },
-    { name: 'Charges',         value: chargesText },
+    { name: '📋 Status',          value: `${emoji} ${cap(c.status)}`,                  inline: true },
+    { name: '⚡ Priority',         value: `${priEmoji} ${cap(c.priority)||'Medium'}`,   inline: true },
+    { name: '⚖️ Grade',            value: c.caseGrade || 'N/A',                         inline: true },
+    { name: '🏛️ County',           value: c.county ? `${c.county} County, TX` : 'N/A', inline: true },
+    { name: '🏛️ Court',            value: c.courtType || 'N/A',                         inline: true },
+    { name: '📝 Plea',             value: cap(c.plea) || 'Not Entered',                 inline: true },
+    { name: '🧑‍⚖️ Verdict',          value: cap(c.verdict) || 'Pending',                 inline: true },
+    { name: '💰 Bond / Bail',      value: bond,                                         inline: true },
+    { name: '📅 Hearing Date',     value: fmtDate(c.courtDate),                         inline: true },
+    { name: '👨‍⚖️ Presiding Judge',  value: c.presidingJudge || 'N/A',                   inline: true },
+    { name: '👔 Prosecutor',       value: c.prosecutor || 'N/A',                        inline: true },
+    { name: '🛡️ Defense Counsel',  value: c.defenseAttorney || 'N/A',                  inline: true },
+    { name: '🚔 Lead Officer',     value: c.assignedOfficer || 'N/A',                  inline: true },
+    { name: '📌 Charges Filed', value: chargesText.slice(0, 1024) },
   ];
-  if (c.sentence) fields.push({ name: 'Sentence', value: c.sentence.slice(0, 512) });
+  if (c.sentence) fields.push({ name: '⛓️ Sentence', value: c.sentence.slice(0, 512) });
   return new EmbedBuilder()
-    .setTitle(`Case ${c.caseNumber} — ${c.title}`)
-    .setColor(statusColor[c.status] || 0x6b7280)
-    .setDescription(`**Defendant:** ${c.subject}`)
+    .setTitle(`${emoji} Case ${c.caseNumber} — ${c.title}`)
+    .setColor(color[c.status] || 0x6b7280)
+    .setDescription(`## Defendant: ${c.subject}\n**Case Type:** ${cap(c.type||'Criminal')}`)
     .addFields(...fields)
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setFooter({ text: '🦅 State of Texas — Department of Justice' })
     .setTimestamp();
 }
 
@@ -190,10 +206,42 @@ const client = new Client({
 });
 let ready = false;
 
+// ── Auto-sync guild members → defendant records ───────────────────────────────
+async function syncGuildMembers() {
+  if (!GUILD_ID) return 0;
+  try {
+    const guild = await client.guilds.fetch(GUILD_ID);
+    const members = await guild.members.fetch();
+    const defendants = readJSON(DEFENDANTS_FILE);
+    const existingNames = new Set(defendants.map(d => (d.fullName||'').toLowerCase()));
+    let added = 0;
+    for (const [, m] of members) {
+      if (m.user.bot) continue;
+      const name = m.nickname || m.user.globalName || m.user.username;
+      if (!name || existingNames.has(name.toLowerCase())) continue;
+      defendants.unshift({
+        id: newId(), fullName: name, dob: '', race: '', sex: '',
+        address: '', notes: `Auto-created from Discord: ${m.user.tag}`,
+        linkedCases: [], linkedWarrants: [],
+        discordId: m.user.id, createdAt: new Date().toISOString()
+      });
+      existingNames.add(name.toLowerCase());
+      added++;
+    }
+    if (added > 0) writeJSON(DEFENDANTS_FILE, defendants);
+    console.log(`[DOJ Bot] syncGuildMembers: ${added} new record(s) added.`);
+    return added;
+  } catch (err) {
+    console.error('[DOJ Bot] syncGuildMembers error:', err.message);
+    return 0;
+  }
+}
+
 client.once(Events.ClientReady, async () => {
   console.log(`[DOJ Bot] Online as ${client.user.tag}`);
   ready = true;
   await registerCommands();
+  await syncGuildMembers();
 });
 
 // ── Auto-refresh: edit the stored embeds with latest data ─────────────────────
@@ -372,10 +420,10 @@ client.on(Events.MessageCreate, async message => {
   }
 
   if (content === '$refresh') {
-    await ownerDM(message, 'Refreshing Discord embeds…');
+    await ownerDM(message, 'Refreshing embeds and syncing guild members…');
     try {
-      await refreshEmbeds();
-      await message.author.send('Embeds updated.').catch(() => {});
+      const [, added] = await Promise.all([refreshEmbeds(), syncGuildMembers()]);
+      await message.author.send(`Done. Embeds updated. ${added} new player record(s) synced.`).catch(() => {});
     } catch (err) {
       await message.author.send(`Refresh failed: ${err.message}`).catch(() => {});
     }

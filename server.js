@@ -22,15 +22,16 @@ const config = {
 // ── Data paths ──────────────────────────────────────────────────────────────
 const DATA_DIR        = path.join(__dirname, 'data');
 const UPLOADS_DIR     = path.join(DATA_DIR, 'uploads');
-const CASES_FILE      = path.join(DATA_DIR, 'cases.json');
-const WARRANTS_FILE   = path.join(DATA_DIR, 'warrants.json');
-const ACTIVITY_FILE   = path.join(DATA_DIR, 'activity.json');
-const SUBPOENAS_FILE  = path.join(DATA_DIR, 'subpoenas.json');
-const DEFENDANTS_FILE = path.join(DATA_DIR, 'defendants.json');
+const CASES_FILE             = path.join(DATA_DIR, 'cases.json');
+const WARRANTS_FILE          = path.join(DATA_DIR, 'warrants.json');
+const ACTIVITY_FILE          = path.join(DATA_DIR, 'activity.json');
+const SUBPOENAS_FILE         = path.join(DATA_DIR, 'subpoenas.json');
+const DEFENDANTS_FILE        = path.join(DATA_DIR, 'defendants.json');
+const WARRANT_REQUESTS_FILE  = path.join(DATA_DIR, 'warrant_requests.json');
 
 for (const d of [DATA_DIR, UPLOADS_DIR])
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE, SUBPOENAS_FILE, DEFENDANTS_FILE])
+for (const f of [CASES_FILE, WARRANTS_FILE, ACTIVITY_FILE, SUBPOENAS_FILE, DEFENDANTS_FILE, WARRANT_REQUESTS_FILE])
   if (!fs.existsSync(f)) fs.writeFileSync(f, '[]');
 
 function readJSON(file) {
@@ -207,6 +208,12 @@ function nextSubpoenaNumber() {
   const nums = subs.map(s => { const m = String(s.subpoenaNumber||'').match(/(\d+)$/); return m?parseInt(m[1]):0; });
   return `SP-${year}-${String((nums.length?Math.max(...nums):0)+1).padStart(4,'0')}`;
 }
+function nextWarrantRequestNumber() {
+  const reqs = readJSON(WARRANT_REQUESTS_FILE);
+  const year = new Date().getFullYear();
+  const nums = reqs.map(r => { const m = String(r.requestNumber||'').match(/(\d+)$/); return m?parseInt(m[1]):0; });
+  return `WR-${year}-${String((nums.length?Math.max(...nums):0)+1).padStart(4,'0')}`;
+}
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 const CASE_STATUS_CLASS    = { open:'badge-green', investigation:'badge-blue', pending:'badge-yellow', filed:'badge-purple', closed:'badge-gray', dismissed:'badge-red' };
@@ -371,15 +378,19 @@ function layout({ title, body, user, page = '' }) {
   const canSubpoenas = user && hasPerm(pl, 'clerk');
   const canDefendants = user && hasPerm(pl, 'clerk');
 
+  const canManageRequests = user && hasPerm(pl, 'clerk');
+
   const nav = user ? `
   <div class="subnav">
     <a class="subnav-link${page==='dashboard'?' active':''}" href="/dashboard">Dashboard</a>
-    ${canWarrants   ? `<a class="subnav-link${page==='warrants'?' active':''}" href="/warrants">Warrants</a>` : ''}
-    ${canCases      ? `<a class="subnav-link${page==='cases'?' active':''}" href="/cases">Cases</a>` : ''}
-    ${canDefendants ? `<a class="subnav-link${page==='defendants'?' active':''}" href="/defendants">Defendants</a>` : ''}
-    ${canSubpoenas  ? `<a class="subnav-link${page==='subpoenas'?' active':''}" href="/subpoenas">Subpoenas</a>` : ''}
-    ${canDocs       ? `<a class="subnav-link${page==='channels'?' active':''}" href="/channels">Documents</a>` : ''}
-    ${canCases      ? `<a class="subnav-link${page==='calendar'?' active':''}" href="/calendar">Calendar</a>` : ''}
+    ${canWarrants        ? `<a class="subnav-link${page==='warrants'?' active':''}" href="/warrants">Warrants</a>` : ''}
+    ${canCases           ? `<a class="subnav-link${page==='cases'?' active':''}" href="/cases">Cases</a>` : ''}
+    ${canDefendants      ? `<a class="subnav-link${page==='defendants'?' active':''}" href="/defendants">Defendants</a>` : ''}
+    ${canSubpoenas       ? `<a class="subnav-link${page==='subpoenas'?' active':''}" href="/subpoenas">Subpoenas</a>` : ''}
+    ${canDocs            ? `<a class="subnav-link${page==='channels'?' active':''}" href="/channels">Documents</a>` : ''}
+    ${canCases           ? `<a class="subnav-link${page==='calendar'?' active':''}" href="/calendar">Calendar</a>` : ''}
+    <a class="subnav-link${page==='warrant-request'?' active':''}" href="/warrant-request">Request Warrant</a>
+    ${canManageRequests  ? `<a class="subnav-link${page==='warrant-requests'?' active':''}" href="/warrant-requests">Warrant Requests</a>` : ''}
     <a class="subnav-link${page==='search'?' active':''}" href="/search">Search</a>
   </div>` : '';
 
@@ -390,10 +401,11 @@ function layout({ title, body, user, page = '' }) {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${escapeHtml(title)}</title>
   <link rel="stylesheet" href="/styles.css"/>
+  <link rel="icon" type="image/webp" href="/doj-logo.webp"/>
 </head>
 <body>
   <nav class="topbar">
-    <a class="topbar-brand" href="${user?'/dashboard':'/'}">DOJ Portal</a>
+    <a class="topbar-brand" href="${user?'/dashboard':'/'}"><img src="/doj-logo.webp" class="topbar-logo" alt="DOJ"/> DOJ Portal</a>
     <div class="topbar-right">
       ${user ? `
         ${badge(PERM_LEVEL_LABEL[pl]||pl, PERM_LEVEL_CLASS[pl]||'badge-gray')}
@@ -442,6 +454,24 @@ app.get('/api/warrants', (req, res) => {
   res.json(warrants.filter(w => w.status === 'active'));
 });
 
+app.get('/api/members', ensureAuth, async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q || q.length < 2 || !config.botToken || !config.guildId) return res.json([]);
+  try {
+    const r = await fetch(
+      `https://discord.com/api/guilds/${config.guildId}/members/search?query=${encodeURIComponent(q)}&limit=25`,
+      { headers: { Authorization: `Bot ${config.botToken}` } }
+    );
+    if (!r.ok) return res.json([]);
+    const members = await r.json();
+    const names = members
+      .filter(m => !m.user?.bot)
+      .map(m => m.nick || m.user?.global_name || m.user?.username)
+      .filter(Boolean);
+    return res.json([...new Set(names)]);
+  } catch { return res.json([]); }
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════════════════════════════════════════
@@ -456,7 +486,7 @@ app.get('/', (req, res) => {
   const body = `
   <div class="login-wrap">
     <div class="login-card">
-      <div class="login-seal">⚖</div>
+      <div class="login-seal"><img src="/doj-logo.webp" class="login-logo-img" alt="Department of Justice Seal"/></div>
       <h1 class="login-title">DOJ Portal</h1>
       <p class="login-sub">State of Texas — Department of Justice<br/>Sign in with your Discord account. Access is determined by your server role.</p>
       ${ready
@@ -1327,12 +1357,36 @@ app.get('/defendants', requirePerm('clerk'), (req, res) => {
     ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/defendants/new">+ Add Defendant</a>` : ''}
   </div>
   <div class="card" style="margin-bottom:1rem">
-    <form method="get" class="filter-row">
-      <input class="input-sm" name="q" value="${escapeHtml(q)}" placeholder="Search by name, DOB, or address…" style="flex:1"/>
+    <form method="get" class="filter-row" id="defSearch">
+      <div class="autocomplete-wrap" style="flex:1">
+        <input class="input-sm" name="q" id="defQ" value="${escapeHtml(q)}" placeholder="Search by name or Discord username…" style="width:100%" autocomplete="off"/>
+        <div class="autocomplete-list" id="defAC"></div>
+      </div>
       <button class="btn-primary" type="submit">Search</button>
       <a class="btn-sm" href="/defendants">Reset</a>
     </form>
   </div>
+  <script>
+  (function(){
+    const inp=document.getElementById('defQ'), list=document.getElementById('defAC');
+    let timer;
+    inp.addEventListener('input',function(){
+      clearTimeout(timer);
+      const v=inp.value.trim();
+      if(v.length<2){list.classList.remove('open');list.innerHTML='';return;}
+      timer=setTimeout(async()=>{
+        const r=await fetch('/api/members?q='+encodeURIComponent(v));
+        const names=await r.json();
+        list.innerHTML=names.map(n=>'<div class="autocomplete-item">'+n+'</div>').join('');
+        list.classList.toggle('open',names.length>0);
+        list.querySelectorAll('.autocomplete-item').forEach(el=>{
+          el.addEventListener('mousedown',function(e){e.preventDefault();inp.value=this.textContent;list.classList.remove('open');document.getElementById('defSearch').submit();});
+        });
+      },250);
+    });
+    document.addEventListener('click',function(e){if(!inp.contains(e.target)&&!list.contains(e.target))list.classList.remove('open');});
+  })();
+  </script>
   <div class="card">
     <div class="table-header" style="grid-template-columns:1.5fr 1fr 1.5fr 1fr"><span>Full Name</span><span>Date of Birth</span><span>Address</span><span>Added</span></div>
     <div class="table-rows">${rows}</div>
@@ -1765,6 +1819,181 @@ app.post('/channels/:channelId/files/:filename/delete', requirePerm('clerk'), (r
   const fp = path.join(UPLOADS_DIR, req.params.channelId, req.params.filename);
   if (fs.existsSync(fp)) fs.unlinkSync(fp);
   return res.redirect(`/channels/${req.params.channelId}`);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// WARRANT REQUESTS (citizen-facing)
+// ════════════════════════════════════════════════════════════════════════════
+
+const WR_STATUS_CLASS = { pending:'badge-yellow', approved:'badge-green', denied:'badge-red' };
+
+app.get('/warrant-request', ensureAuth, (req, res) => {
+  const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
+  const user = req.session.user;
+  const myRequests = readJSON(WARRANT_REQUESTS_FILE)
+    .filter(r => r.requesterId === user.id)
+    .slice(0, 10);
+  const myRows = myRequests.map(r => `
+  <div class="request-card">
+    <div class="request-info">
+      <div class="request-subject">${escapeHtml(r.subject)} <span class="mono muted-text">${escapeHtml(r.requestNumber)}</span></div>
+      <div class="request-meta">${escapeHtml(r.type.charAt(0).toUpperCase()+r.type.slice(1))} Warrant · ${escapeHtml(r.county)} County · Filed ${fmtDate(r.createdAt)}</div>
+      <div class="request-reason">${escapeHtml((r.reason||'').slice(0,200))}</div>
+    </div>
+    <div class="request-actions">${badge(r.status, WR_STATUS_CLASS[r.status]||'badge-gray')}</div>
+  </div>`).join('') || '<p class="muted-text" style="padding:0.5rem 0">You have not submitted any warrant requests yet.</p>';
+
+  const body = `
+  <div class="page-header">
+    <h1 class="page-title">Request a Warrant</h1>
+    <p class="page-sub">Submit a warrant request to the Department of Justice. A clerk will review your request.</p>
+  </div>
+  <div class="card">
+    <form method="post" action="/warrant-request">
+      <div class="section-label">Warrant Details</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Subject Name <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name of the person you are reporting"/></div>
+        <div class="form-group"><label>Warrant Type <span class="req">*</span></label><select class="input" name="type" required><option value="arrest">Arrest Warrant</option><option value="search">Search Warrant</option><option value="bench">Bench Warrant</option></select></div>
+        <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
+        <div class="form-group"><label>Date of Incident</label><input class="input" type="date" name="incidentDate"/></div>
+      </div>
+      <div class="section-label">Your Information</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Your Name <span class="req">*</span></label><input class="input" name="requesterDisplay" required value="${escapeHtml(user.username)}" placeholder="Your full name or alias"/></div>
+        <div class="form-group"><label>Contact / Discord</label><input class="input" name="contact" value="${escapeHtml(user.username)}" placeholder="How to reach you"/></div>
+      </div>
+      <div class="section-label">Description</div>
+      <div class="form-group"><label>Reason / Description <span class="req">*</span></label><textarea class="input" name="reason" rows="5" required placeholder="Describe the incident, why you believe a warrant is needed, any evidence or witnesses…"></textarea></div>
+      <div class="form-actions"><button class="btn-primary" type="submit">Submit Request</button></div>
+    </form>
+  </div>
+  ${myRequests.length ? `
+  <div class="card">
+    <div class="card-title" style="margin-bottom:0.75rem">Your Previous Requests</div>
+    ${myRows}
+  </div>` : ''}`;
+  return res.send(layout({ title: 'Request Warrant — DOJ', body, user, page: 'warrant-request' }));
+});
+
+app.post('/warrant-request', ensureAuth, (req, res) => {
+  const { subject, type, county, incidentDate, requesterDisplay, contact, reason } = req.body;
+  if (!subject || !type || !county || !reason) return res.status(400).send('Missing required fields.');
+  const user = req.session.user;
+  const reqs = readJSON(WARRANT_REQUESTS_FILE);
+  reqs.unshift({
+    id: newId(),
+    requestNumber: nextWarrantRequestNumber(),
+    requesterId: user.id,
+    requesterUsername: user.username,
+    requesterDisplay: requesterDisplay||user.username,
+    contact: contact||'',
+    subject, type, county, incidentDate: incidentDate||'',
+    reason, status: 'pending',
+    createdAt: new Date().toISOString(),
+    reviewedBy: '', reviewedAt: '', reviewNote: '', linkedWarrantId: ''
+  });
+  writeJSON(WARRANT_REQUESTS_FILE, reqs);
+  logActivity('warrant_issued', `Warrant request ${reqs[0].requestNumber} submitted for ${subject}`, user.username);
+  return res.redirect('/warrant-request?submitted=1');
+});
+
+// Clerk warrant request management
+app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
+  const { status='' } = req.query;
+  const pl = req.session.user.permLevel;
+  let reqs = readJSON(WARRANT_REQUESTS_FILE);
+  if (status) reqs = reqs.filter(r => r.status === status);
+
+  const rows = reqs.map(r => `
+  <div class="request-card">
+    <div class="request-info">
+      <div class="request-subject">${escapeHtml(r.subject)} <span class="mono muted-text">${escapeHtml(r.requestNumber)}</span></div>
+      <div class="request-meta">
+        ${badge(r.status, WR_STATUS_CLASS[r.status]||'badge-gray')}
+        ${badge(r.type+' warrant','badge-blue')}
+        · ${escapeHtml(r.county)} County · Submitted by <strong>${escapeHtml(r.requesterDisplay||r.requesterUsername)}</strong> · ${fmtDate(r.createdAt)}
+      </div>
+      <div class="request-reason">${escapeHtml((r.reason||'').slice(0,300))}</div>
+      ${r.reviewNote ? `<p style="margin-top:0.4rem;font-size:0.8rem;color:#6b7280"><em>Review note: ${escapeHtml(r.reviewNote)}</em></p>` : ''}
+    </div>
+    <div class="request-actions" style="flex-direction:column;align-items:flex-end;gap:0.5rem;">
+      ${r.status==='pending' && hasPerm(pl,'clerk') ? `
+        <form method="post" action="/warrant-requests/${r.id}/approve" style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+          <input class="input-sm" name="note" placeholder="Note (optional)" style="width:160px"/>
+          <button class="btn-primary" type="submit" style="font-size:0.8rem;padding:0.3rem 0.75rem">Approve</button>
+        </form>
+        <form method="post" action="/warrant-requests/${r.id}/deny" style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+          <input class="input-sm" name="note" placeholder="Reason for denial" style="width:160px"/>
+          <button class="btn-sm btn-danger" type="submit" style="font-size:0.8rem">Deny</button>
+        </form>` : ''}
+      ${r.linkedWarrantId ? `<a class="btn-sm" href="/warrants/${r.linkedWarrantId}" style="font-size:0.8rem">View Warrant →</a>` : ''}
+    </div>
+  </div>`).join('') || '<p class="muted-text" style="padding:1rem">No requests match your filter.</p>';
+
+  const pending = readJSON(WARRANT_REQUESTS_FILE).filter(r=>r.status==='pending').length;
+  const body = `
+  <div class="page-header row-between">
+    <div>
+      <h1 class="page-title">Warrant Requests</h1>
+      <p class="page-sub">${reqs.length} request${reqs.length!==1?'s':''} · ${pending} pending</p>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:1rem">
+    <form method="get" class="filter-row">
+      <select class="input-sm" name="status">
+        <option value="">All statuses</option>
+        ${['pending','approved','denied'].map(s=>`<option value="${s}" ${status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+      </select>
+      <button class="btn-primary" type="submit">Filter</button>
+      <a class="btn-sm" href="/warrant-requests">Reset</a>
+    </form>
+  </div>
+  <div>${rows}</div>`;
+  return res.send(layout({ title: 'Warrant Requests — DOJ', body, user: req.session.user, page: 'warrant-requests' }));
+});
+
+app.post('/warrant-requests/:id/approve', requirePerm('clerk'), (req, res) => {
+  const reqs = readJSON(WARRANT_REQUESTS_FILE);
+  const idx = reqs.findIndex(r => r.id === req.params.id);
+  if (idx === -1) return res.status(404).send('Not found.');
+  const r = reqs[idx];
+  const note = (req.body.note||'').trim();
+
+  const warrants = readJSON(WARRANTS_FILE);
+  const w = {
+    id: newId(), warrantNumber: nextWarrantNumber(), type: r.type, subject: r.subject,
+    county: r.county, judge: '', subjectDob: '', subjectDescription: '',
+    address: '', linkedCaseId: '',
+    status: 'active', issuedBy: req.session.user.username,
+    issuedAt: new Date().toISOString().split('T')[0],
+    expiresAt: '', executedAt: '',
+    description: `Warrant request ${r.requestNumber} approved.\n\n${r.reason}`
+  };
+  warrants.unshift(w);
+  writeJSON(WARRANTS_FILE, warrants);
+
+  reqs[idx].status = 'approved';
+  reqs[idx].reviewedBy = req.session.user.username;
+  reqs[idx].reviewedAt = new Date().toISOString();
+  reqs[idx].reviewNote = note;
+  reqs[idx].linkedWarrantId = w.id;
+  writeJSON(WARRANT_REQUESTS_FILE, reqs);
+
+  logActivity('warrant_issued', `Warrant ${w.warrantNumber} approved from request ${r.requestNumber} — ${r.subject}`, req.session.user.username);
+  refreshBotEmbeds();
+  return res.redirect('/warrant-requests');
+});
+
+app.post('/warrant-requests/:id/deny', requirePerm('clerk'), (req, res) => {
+  const reqs = readJSON(WARRANT_REQUESTS_FILE);
+  const idx = reqs.findIndex(r => r.id === req.params.id);
+  if (idx === -1) return res.status(404).send('Not found.');
+  reqs[idx].status = 'denied';
+  reqs[idx].reviewedBy = req.session.user.username;
+  reqs[idx].reviewedAt = new Date().toISOString();
+  reqs[idx].reviewNote = (req.body.note||'').trim();
+  writeJSON(WARRANT_REQUESTS_FILE, reqs);
+  return res.redirect('/warrant-requests');
 });
 
 // ════════════════════════════════════════════════════════════════════════════
