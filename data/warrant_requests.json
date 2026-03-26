@@ -1,7 +1,7 @@
 [
   {
-    "id": "7857488a90f4877f",
-    "requestNumber": "WR-2026-0001",
+    "id": "4b3b72c803af484e",
+    "requestNumber": "WR-2026-0002",
     "requesterId": "848356730256883744",
     "requesterUsername": "justawacko_",
     "requesterDisplay": "justawacko_",
@@ -10,12 +10,16 @@
     "type": "arrest",
     "county": "Tarrant",
     "incidentDate": "2026-03-26",
-    "reason": "dsadsd",
+    "reason": "dasdasds",
     "status": "approved",
-    "createdAt": "2026-03-26T14:22:14.451Z",
+    "createdAt": "2026-03-26T14:58:38.385Z",
     "reviewedBy": "justawacko_",
-    "reviewedAt": "2026-03-26T14:22:26.127Z",
+    "reviewedAt": "2026-03-26T15:00:28.786Z",
     "reviewNote": "",
-    "linkedWarrantId": "f18155016d58a96f"
+    "linkedWarrantId": "7bd88586fde2a2fc",
+    "attachmentFile": "1774537118312_image.webp",
+    "attachmentName": "image.webp",
+    "warrantPdfFile": "warrant_W-2026-0001_1774537228787.pdf",
+    "warrantPdfName": "Warrant-W-2026-0001.pdf"
   }
 ]

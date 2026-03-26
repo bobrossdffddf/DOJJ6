@@ -1,5 +1,33 @@
 [
   {
+    "id": "3437d162e8822834",
+    "type": "warrant_issued",
+    "description": "Arrest Warrant W-2026-0002 issued for BNP Pixel",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T15:06:24.952Z"
+  },
+  {
+    "id": "8b621052e15e9365",
+    "type": "warrant_deleted",
+    "description": "Warrant request deleted by justawacko_",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T15:01:16.690Z"
+  },
+  {
+    "id": "eccfad768387fa81",
+    "type": "warrant_issued",
+    "description": "Warrant W-2026-0001 signed & approved from request WR-2026-0002 — Tim Bradford",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T15:00:29.134Z"
+  },
+  {
+    "id": "a4dc7961c3a372e1",
+    "type": "warrant_issued",
+    "description": "Warrant request WR-2026-0002 submitted for Tim Bradford",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T14:58:38.385Z"
+  },
+  {
     "id": "f71c704fddaa067d",
     "type": "warrant_issued",
     "description": "Warrant W-2026-0001 approved from request WR-2026-0001 — Tim Bradford",
