@@ -259,7 +259,6 @@ function requirePerm(level) {
     if (!hasPerm(req.session.user.permLevel, level)) {
       const body = `
       <div class="access-denied">
-        <div class="denied-icon">🔒</div>
         <h2>Access Denied</h2>
         <p>Your role (<strong>${PERM_LEVEL_LABEL[req.session.user.permLevel] || req.session.user.permLevel}</strong>) does not have access to this section.</p>
         <p class="muted-text">If you believe this is wrong, contact your supervisor — your Discord role controls your access.</p>
@@ -297,7 +296,7 @@ function layout({ title, body, user, page = '' }) {
 </head>
 <body>
   <nav class="topbar">
-    <a class="topbar-brand" href="${user?'/dashboard':'/'}">⚖️ DOJ RP Portal</a>
+    <a class="topbar-brand" href="${user?'/dashboard':'/'}">DOJ RP Portal</a>
     <div class="topbar-right">
       ${user ? `
         ${badge(PERM_LEVEL_LABEL[pl]||pl, PERM_LEVEL_CLASS[pl]||'badge-gray')}
@@ -344,20 +343,14 @@ app.get('/', (req, res) => {
   const body = `
   <div class="login-wrap">
     <div class="login-card">
-      <div class="login-icon">⚖️</div>
       <h1 class="login-title">DOJ RP Portal</h1>
-      <p class="login-sub">Sign in with your Discord account. Your access level is determined automatically by your server role.</p>
+      <p class="login-sub">Sign in with your Discord account. Access is determined by your server role.</p>
       ${ready
         ? `<a class="btn-discord" href="${authUrl(state)}">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
-            Continue with Discord
+            Sign in with Discord
           </a>
-          <div class="role-info-grid">
-            <div class="role-info-item"><span class="badge badge-gray">Citizen</span><span>Warrant lookup</span></div>
-            <div class="role-info-item"><span class="badge badge-blue">Clerk</span><span>Cases + Documents</span></div>
-            <div class="role-info-item"><span class="badge badge-purple">Lawyer</span><span>Full case management</span></div>
-            <div class="role-info-item"><span class="badge badge-green">AG</span><span>Full admin access</span></div>
-          </div>`
+`
         : `<div class="alert-box">Discord credentials not configured. Set <code>DISCORD_CLIENT_ID</code> and <code>DISCORD_CLIENT_SECRET</code>.</div>`}
     </div>
   </div>`;
@@ -471,11 +464,11 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     const body = `
     <div class="page-header">
       <h1 class="page-title">Dashboard</h1>
-      <p class="page-sub">Welcome, ${escapeHtml(user.username)}.</p>
+      <p class="page-sub">Signed in as ${escapeHtml(user.username)}.</p>
     </div>
     ${permBanner}
     <div class="card">
-      <div class="card-title" style="margin-bottom:0.75rem">⚠️ Warrant Lookup</div>
+      <div class="card-title" style="margin-bottom:0.75rem">Warrant Lookup</div>
       <p style="font-size:0.9rem;color:#6b7280;margin-bottom:1rem">Search for active warrants by subject name or warrant number.</p>
       <form method="get" action="/warrants" class="filter-row">
         <input class="input" name="q" placeholder="Search by name or warrant number…" style="flex:1"/>
@@ -508,7 +501,7 @@ app.get('/dashboard', ensureAuth, (req, res) => {
   <div class="page-header row-between">
     <div>
       <h1 class="page-title">Dashboard</h1>
-      <p class="page-sub">Welcome back, ${escapeHtml(user.username)}.</p>
+      <p class="page-sub">Signed in as ${escapeHtml(user.username)}.</p>
     </div>
     <div class="btn-group">
       ${hasPerm(pl,'lawyer') ? `<a class="btn-primary" href="/cases/new">+ New Case</a>` : ''}
@@ -544,7 +537,7 @@ app.get('/dashboard', ensureAuth, (req, res) => {
 });
 
 function activityIcon(type) {
-  return { case_created:'📋', case_updated:'✏️', case_closed:'✅', warrant_issued:'🔍', warrant_executed:'⚡', file_uploaded:'📄', note_added:'📝' }[type] || '📌';
+  return { case_created:'NEW', case_updated:'UPD', case_closed:'CLO', warrant_issued:'WRT', warrant_executed:'EXE', file_uploaded:'DOC', note_added:'NOTE' }[type] || '–';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -957,7 +950,6 @@ app.get('/channels', requirePerm('clerk'), async (req, res) => {
   const cards = channels.map(ch => {
     const files = getChannelFiles(ch.id);
     return `<a class="channel-card" href="/channels/${ch.id}">
-      <div class="channel-icon">📂</div>
       <div class="channel-info"><div class="channel-name">${escapeHtml(formatChannelName(ch.name))}</div><div class="channel-meta">${files.length} document${files.length!==1?'s':''}</div></div>
       <svg class="channel-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
     </a>`;
@@ -965,7 +957,7 @@ app.get('/channels', requirePerm('clerk'), async (req, res) => {
   const body = `
   <div class="page-header"><h1 class="page-title">Documents</h1><p class="page-sub">Channels starting with <code>dc-</code> that you have access to in Discord.</p></div>
   ${error?`<div class="alert-box">${error}</div>`:''}
-  ${channels.length===0&&!error?`<div class="empty-state"><div class="empty-icon">📭</div><p>No accessible <code>dc-</code> channels found.</p></div>`:`<div class="channel-list">${cards}</div>`}`;
+  ${channels.length===0&&!error?`<div class="empty-state"><p>No accessible <code>dc-</code> channels found.</p></div>`:`<div class="channel-list">${cards}</div>`}`;
   return res.send(layout({ title: 'Documents — DOJ RP', body, user, page: 'channels' }));
 });
 
@@ -988,13 +980,11 @@ app.get('/channels/:channelId', requirePerm('clerk'), async (req, res) => {
     } catch {}
   }
   const files = getChannelFiles(channelId);
-  const ext2icon = { '.pdf':'📕', '.doc':'📘', '.docx':'📘', '.jpg':'🖼️', '.jpeg':'🖼️', '.png':'🖼️', '.gif':'🖼️', '.webp':'🖼️', '.mp4':'🎬', '.mov':'🎬', '.avi':'🎬' };
   const fileRows = files.map(f => {
-    const ext = path.extname(f.originalName).toLowerCase();
-    const icon = ext2icon[ext] || '📄';
+    const ext = (path.extname(f.originalName).toLowerCase().replace('.','').toUpperCase()) || 'FILE';
     return `
     <div class="file-row">
-      <div class="file-icon">${icon}</div>
+      <div class="file-ext">${ext}</div>
       <div class="file-info"><div class="file-name">${escapeHtml(f.originalName)}</div><div class="file-meta">${formatSize(f.size)} · ${fmtDate(f.uploadedAt)}</div></div>
       <div class="file-actions">
         <a class="btn-sm" href="/channels/${escapeHtml(channelId)}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a>
@@ -1009,14 +999,13 @@ app.get('/channels/:channelId', requirePerm('clerk'), async (req, res) => {
   <div class="upload-box">
     <form method="post" action="/channels/${escapeHtml(channelId)}/upload" enctype="multipart/form-data">
       <label class="upload-label" for="fileInput">
-        <div class="upload-icon">⬆️</div>
         <div class="upload-text">Click to upload a file</div>
         <div class="upload-hint">Max 250 MB · Any file type</div>
         <input type="file" id="fileInput" name="file" required style="display:none" onchange="this.closest('form').submit()"/>
       </label>
     </form>
   </div>
-  <div class="file-list">${files.length===0?`<div class="empty-state"><div class="empty-icon">📭</div><p>No documents yet.</p></div>`:fileRows}</div>`;
+  <div class="file-list">${files.length===0?`<div class="empty-state"><p>No documents yet.</p></div>`:fileRows}</div>`;
   return res.send(layout({ title: `${resolvedName} — DOJ RP`, body, user, page: 'channels' }));
 });
 
@@ -1085,9 +1074,9 @@ app.get('/search', ensureAuth, (req, res) => {
   ${lq?`<p class="muted-text" style="margin-bottom:1rem">${total} result${total!==1?'s':''} for "<strong>${escapeHtml(q)}</strong>"</p>`:''}
   ${caseResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Cases (${caseResults.length})</div>${caseResults.map(c=>`<a class="table-row-link" href="/cases/${c.id}"><span class="tr-cell mono">${escapeHtml(c.caseNumber)}</span><span class="tr-cell fw">${escapeHtml(c.title)}</span><span class="tr-cell">${badge(c.status,CASE_STATUS_CLASS[c.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
   ${warrantResults.length?`<div class="card" style="margin-bottom:1rem"><div class="card-title" style="margin-bottom:0.75rem">Warrants (${warrantResults.length})</div>${warrantResults.map(w=>`<a class="table-row-link" href="/warrants/${w.id}"><span class="tr-cell mono">${escapeHtml(w.warrantNumber)}</span><span class="tr-cell fw">${escapeHtml(w.subject)}</span><span class="tr-cell">${badge(w.status,WARRANT_STATUS_CLASS[w.status]||'badge-gray')}</span></a>`).join('')}</div>`:''}
-  ${fileResults.length?`<div class="card"><div class="card-title" style="margin-bottom:0.75rem">Documents (${fileResults.length})</div>${fileResults.map(f=>`<div class="file-row"><div class="file-icon">📄</div><div class="file-info"><div class="file-name">${escapeHtml(f.originalName)}</div><div class="file-meta">${formatSize(f.size)}</div></div><a class="btn-sm" href="/channels/${f.channelId}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a></div>`).join('')}</div>`:''}
-  ${lq&&total===0?`<div class="empty-state"><div class="empty-icon">🔍</div><p>No results for "<strong>${escapeHtml(q)}</strong>".</p></div>`:''}
-  ${!lq?`<div class="empty-state"><div class="empty-icon">🔍</div><p>Enter a search term above.</p></div>`:''}`;
+  ${fileResults.length?`<div class="card"><div class="card-title" style="margin-bottom:0.75rem">Documents (${fileResults.length})</div>${fileResults.map(f=>`<div class="file-row"><div class="file-ext">FILE</div><div class="file-info"><div class="file-name">${escapeHtml(f.originalName)}</div><div class="file-meta">${formatSize(f.size)}</div></div><a class="btn-sm" href="/channels/${f.channelId}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a></div>`).join('')}</div>`:''}
+  ${lq&&total===0?`<div class="empty-state"><p>No results for "<strong>${escapeHtml(q)}</strong>".</p></div>`:''}
+  ${!lq?`<div class="empty-state"><p>Enter a search term above.</p></div>`:''}`;
   return res.send(layout({ title: 'Search — DOJ RP', body, user: req.session.user, page: 'search' }));
 });
 
