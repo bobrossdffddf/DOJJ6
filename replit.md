@@ -15,7 +15,7 @@ A Discord-authenticated web portal for the State of Texas Department of Justice.
 ## Features
 
 - **Dashboard** — Stats overview (cases, warrants, pending trial, defendants, subpoenas, documents) + recent activity + upcoming hearings
-- **Case Management** — Full CRUD: Criminal, Traffic, Civil, Internal Affairs, Juvenile cases with Texas Penal Code charges, evidence log, plea deal notes, sentencing, notes journal, court dates, priority, and status tracking
+- **Case Management** — Full CRUD: Criminal, Traffic, Civil, Internal Affairs, Juvenile cases with Texas Penal Code charges, evidence log, plea deal notes, sentencing, notes journal, court dates, priority, and status tracking. Clerks can create and edit cases; only AG-level can delete.
 - **Warrant Tracker** — Issue and manage Arrest, Search, and Bench warrants linked to cases
 - **Defendant Records** — Track personal information, linked cases, and linked warrants per defendant
 - **Subpoenas** — Issue Ad Testificandum and Duces Tecum subpoenas linked to cases

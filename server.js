@@ -562,8 +562,8 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     <div class="perm-banner-rights">
       ${hasPerm(pl,'citizen') ? '<span class="perm-chip perm-yes">✓ Warrant Lookup</span>' : ''}
       ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ View Cases</span>' : ''}
+      ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ Create & Edit Cases</span>' : ''}
       ${hasPerm(pl,'clerk')   ? '<span class="perm-chip perm-yes">✓ Documents</span>' : ''}
-      ${hasPerm(pl,'lawyer')  ? '<span class="perm-chip perm-yes">✓ Create Cases</span>' : ''}
       ${hasPerm(pl,'lawyer')  ? '<span class="perm-chip perm-yes">✓ Issue Warrants</span>' : ''}
       ${hasPerm(pl,'ag')      ? '<span class="perm-chip perm-yes">✓ Full Admin</span>' : ''}
       ${!hasPerm(pl,'clerk')  ? '<span class="perm-chip perm-no">✗ Cases</span>' : ''}
@@ -734,7 +734,7 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
   return res.send(layout({ title: 'Cases — DOJ', body, user: req.session.user, page: 'cases' }));
 });
 
-app.get('/cases/new', requirePerm('lawyer'), (req, res) => {
+app.get('/cases/new', requirePerm('clerk'), (req, res) => {
   const chargeOptions = COMMON_CHARGES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
   const countyOptions = TEXAS_COUNTIES.map(cn=>`<option value="${cn}">${cn}</option>`).join('');
   const courtOptions  = COURT_TYPES.map(ct=>`<option value="${escapeHtml(ct)}">${escapeHtml(ct)}</option>`).join('');
@@ -784,7 +784,7 @@ app.get('/cases/new', requirePerm('lawyer'), (req, res) => {
   return res.send(layout({ title: 'New Case — DOJ', body, user: req.session.user, page: 'cases' }));
 });
 
-app.post('/cases', requirePerm('lawyer'), (req, res) => {
+app.post('/cases', requirePerm('clerk'), (req, res) => {
   const { title, subject, type, caseGrade, priority, county, courtType, location, assignedOfficer, prosecutor, defenseAttorney, presidingJudge, plea, bondAmount, courtDate, trialDate, chargesRaw, notes } = req.body;
   if (!title || !subject || !type || !county) return res.status(400).send('Missing required fields.');
   const charges = chargesRaw ? chargesRaw.split(',').map(c=>c.trim()).filter(Boolean) : [];
@@ -962,7 +962,7 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
   return res.send(layout({ title: `${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
 
-app.get('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
+app.get('/cases/:id/edit', requirePerm('clerk'), (req, res) => {
   const cases = readJSON(CASES_FILE);
   const c = cases.find(x => x.id === req.params.id);
   if (!c) return res.status(404).send('Case not found.');
@@ -1021,7 +1021,7 @@ app.get('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
   return res.send(layout({ title: `Edit ${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
 
-app.post('/cases/:id/edit', requirePerm('lawyer'), (req, res) => {
+app.post('/cases/:id/edit', requirePerm('clerk'), (req, res) => {
   const cases = readJSON(CASES_FILE);
   const idx = cases.findIndex(x => x.id === req.params.id);
   if (idx===-1) return res.status(404).send('Case not found.');

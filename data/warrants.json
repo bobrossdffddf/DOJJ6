@@ -1,5 +1,23 @@
 [
   {
+    "id": "a3a53d659a34073a",
+    "warrantNumber": "W-2026-0002",
+    "type": "arrest",
+    "subject": "BNP Pixel",
+    "county": "Tarrant",
+    "judge": "Hon. Joneeby Jones",
+    "subjectDob": "",
+    "subjectDescription": "5\"9 White Brown hair",
+    "address": "333 Line lane",
+    "linkedCaseId": "d81ce63ea21e0870",
+    "status": "executed",
+    "issuedBy": "justawacko_",
+    "issuedAt": "2026-03-26",
+    "expiresAt": "2029-04-24",
+    "executedAt": "2026-03-26T04:14:49.029Z",
+    "description": "Killed 14 people"
+  },
+  {
     "id": "0ec2f344552f687d",
     "warrantNumber": "W-2026-0001",
     "type": "search",

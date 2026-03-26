@@ -1,5 +1,19 @@
 [
   {
+    "id": "6c33c0076065e9c2",
+    "type": "warrant_executed",
+    "description": "Warrant W-2026-0002 executed",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T04:14:49.029Z"
+  },
+  {
+    "id": "5922bfe2726eda31",
+    "type": "warrant_issued",
+    "description": "Arrest Warrant W-2026-0002 issued for BNP Pixel",
+    "user": "justawacko_",
+    "timestamp": "2026-03-26T04:14:35.543Z"
+  },
+  {
     "id": "524f498dff3c3af1",
     "type": "case_created",
     "description": "Case DOJ-2026-0001 created — United States V.s BNP Pixel",
