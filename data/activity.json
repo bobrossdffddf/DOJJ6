@@ -1,5 +1,26 @@
 [
   {
+    "id": "12c40c259126ec14",
+    "type": "exhibit_updated",
+    "description": "Exhibit A in DOJ-2026-0001 marked admitted",
+    "user": "justawacko_",
+    "timestamp": "2026-03-27T15:36:02.868Z"
+  },
+  {
+    "id": "70145102234f1ee8",
+    "type": "defendant_added",
+    "description": "Defendant record auto-created: TEST",
+    "user": "justawacko_",
+    "timestamp": "2026-03-27T15:33:09.457Z"
+  },
+  {
+    "id": "e02a3f62a2859040",
+    "type": "case_created",
+    "description": "Case DOJ-2026-0001 created — UNITED STATES VS TEST",
+    "user": "justawacko_",
+    "timestamp": "2026-03-27T15:33:09.455Z"
+  },
+  {
     "id": "703c0d5c9477774d",
     "type": "warrant_issued",
     "description": "Arrest Warrant W-2026-0002 issued for Tim Bradford",

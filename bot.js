@@ -11,6 +11,8 @@ const { exec } = require('child_process');
 
 const OWNER_ID = '848356730256883744';
 
+const DOJ_LOGO = 'https://cdn.discordapp.com/emojis/1481046563877814445.png';
+
 const DATA_DIR           = path.join(__dirname, 'data');
 const CASES_FILE         = path.join(DATA_DIR, 'cases.json');
 const WARRANTS_FILE      = path.join(DATA_DIR, 'warrants.json');
@@ -92,7 +94,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('link')
-    .setDescription('Link a DOJ Portal case to this channel — creates Discovery and Documents threads')
+    .setDescription('Link a DOJ Portal case to this channel and create Discovery and Documents threads')
     .addStringOption(opt =>
       opt.setName('case_number')
         .setDescription('Case number from the DOJ Portal (e.g. DOJ-2026-0001)')
@@ -127,22 +129,23 @@ function buildWarrantEmbed(w) {
   return new EmbedBuilder()
     .setTitle(`${cap(w.type)} Warrant — ${w.warrantNumber}`)
     .setColor(color[w.status] || 0x6b7280)
+    .setThumbnail(DOJ_LOGO)
     .setDescription(
       `**Subject:** ${w.subject}\n` +
       `**Status:** ${cap(w.status)}  |  **Type:** ${cap(w.type)} Warrant`
     )
     .addFields(
-      { name: 'County',              value: w.county ? `${w.county} County, TX` : 'N/A', inline: true },
-      { name: 'Issuing Judge',       value: w.judge || 'N/A',                             inline: true },
-      { name: 'Issued By',           value: w.issuedBy || 'N/A',                          inline: true },
-      { name: 'Issue Date',          value: fmtDate(w.issuedAt),                          inline: true },
-      { name: 'Expires',             value: fmtDate(w.expiresAt),                         inline: true },
-      { name: 'Subject DOB',         value: fmtDate(w.subjectDob),                        inline: true },
-      { name: 'Last Known Address',  value: w.address || 'N/A',                           inline: false },
-      { name: 'Physical Description',value: w.subjectDescription || 'N/A',                inline: false },
-      { name: 'Probable Cause',      value: (w.description || 'N/A').slice(0, 1024),      inline: false }
+      { name: 'County',               value: w.county ? `${w.county} County, TX` : 'N/A', inline: true },
+      { name: 'Issuing Judge',        value: w.judge || 'N/A',                             inline: true },
+      { name: 'Issued By',            value: w.issuedBy || 'N/A',                          inline: true },
+      { name: 'Issue Date',           value: fmtDate(w.issuedAt),                          inline: true },
+      { name: 'Expires',              value: fmtDate(w.expiresAt),                         inline: true },
+      { name: 'Subject DOB',          value: fmtDate(w.subjectDob),                        inline: true },
+      { name: 'Last Known Address',   value: w.address || 'N/A',                           inline: false },
+      { name: 'Physical Description', value: w.subjectDescription || 'N/A',                inline: false },
+      { name: 'Probable Cause',       value: (w.description || 'N/A').slice(0, 1024),      inline: false }
     )
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
@@ -170,71 +173,76 @@ function buildCaseEmbed(c) {
   return new EmbedBuilder()
     .setTitle(`Case ${c.caseNumber} — ${c.title}`)
     .setColor(color[c.status] || 0x6b7280)
-    .setDescription(`**Defendant:** ${c.subject}\n**Case Type:** ${cap(c.type||'Criminal')}`)
+    .setThumbnail(DOJ_LOGO)
+    .setDescription(`**Defendant:** ${c.subject}\n**Case Type:** ${cap(c.type || 'Criminal')}`)
     .addFields(...fields)
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
 // ── Discord-link embed builders ───────────────────────────────────────────────
 function buildCaseLinkAnnouncementEmbed(c, linkedBy) {
   const color = { open: 0x22c55e, investigation: 0x3b82f6, pending: 0xeab308, filed: 0x7c3aed, closed: 0x6b7280, dismissed: 0xef4444 };
-  const chargesText = (c.charges || []).slice(0, 5).map(ch => `• ${ch}`).join('\n') || 'None listed';
+  const chargesText = (c.charges || []).slice(0, 5).map(ch => `- ${ch}`).join('\n') || 'None listed';
   return new EmbedBuilder()
-    .setTitle(`⚖️ Case Linked — ${c.caseNumber}`)
+    .setTitle(`Case Linked — ${c.caseNumber}`)
     .setColor(color[c.status] || 0x3b82f6)
+    .setThumbnail(DOJ_LOGO)
     .setDescription(
       `**${c.title}** has been linked to Discord.\n\n` +
-      `Discovery and Document threads have been created in this channel.\n` +
-      `Drop **PDF or video** files in the Discovery thread to auto-catalog them as exhibits.`
+      `Discovery and Documents threads have been created in this channel. ` +
+      `Any file submitted to the Discovery thread will be automatically cataloged as a numbered exhibit and recorded on the DOJ Portal.`
     )
     .addFields(
-      { name: 'Case Number', value: c.caseNumber,              inline: true },
-      { name: 'Status',      value: cap(c.status),             inline: true },
-      { name: 'Type',        value: cap(c.type || 'Criminal'), inline: true },
-      { name: 'Defendant',   value: c.subject || 'N/A',        inline: true },
-      { name: 'Prosecutor',  value: c.prosecutor || 'N/A',     inline: true },
+      { name: 'Case Number', value: c.caseNumber,               inline: true },
+      { name: 'Status',      value: cap(c.status),              inline: true },
+      { name: 'Type',        value: cap(c.type || 'Criminal'),  inline: true },
+      { name: 'Defendant',   value: c.subject || 'N/A',         inline: true },
+      { name: 'Prosecutor',  value: c.prosecutor || 'N/A',      inline: true },
       { name: 'Defense',     value: c.defenseAttorney || 'N/A', inline: true },
-      { name: 'Linked By',   value: linkedBy,                  inline: true },
+      { name: 'Linked By',   value: linkedBy,                   inline: true },
       { name: 'Charges',     value: chargesText.slice(0, 1024) }
     )
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
 function buildExhibitRegistryEmbed(c) {
   const exhibits = c.exhibits || [];
-  const statusIcon = { admitted: '✅', rejected: '❌', pending: '⏳' };
+  const statusLabel = { admitted: '[ADMITTED]', rejected: '[REJECTED]', pending: '[PENDING]' };
   const lines = exhibits.map(e =>
-    `**Exhibit ${e.letter}** ${statusIcon[e.status] || '⏳'} — \`${e.filename}\` — *${e.type.toUpperCase()}* — ${e.addedBy}`
+    `**Exhibit ${e.letter}** ${statusLabel[e.status] || '[PENDING]'} — \`${e.filename}\` — ${e.addedBy}`
   );
   return new EmbedBuilder()
-    .setTitle(`📁 Exhibit Registry — ${c.caseNumber}`)
+    .setTitle(`Exhibit Registry — ${c.caseNumber}`)
     .setColor(0x7c3aed)
+    .setThumbnail(DOJ_LOGO)
     .setDescription(
       exhibits.length
         ? lines.join('\n').slice(0, 4000)
-        : '*No exhibits cataloged yet.*\n\nSend a **PDF or video file** in this thread to catalog it as Exhibit A.'
+        : 'No exhibits on file.\n\nSubmit any file to this thread to catalog it as Exhibit A.'
     )
-    .setFooter({ text: 'State of Texas — DOJ Portal • Updates automatically with each new exhibit' })
+    .setFooter({ text: 'State of Texas — Department of Justice  |  Updates automatically with each new exhibit', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
 function buildCaseStatusUpdateEmbed(c, updatedBy) {
   const color = { open: 0x22c55e, investigation: 0x3b82f6, pending: 0xeab308, filed: 0x7c3aed, closed: 0x6b7280, dismissed: 0xef4444 };
   const fields = [
-    { name: 'Status',   value: cap(c.status),               inline: true },
-    { name: 'Plea',     value: cap(c.plea || 'not entered'), inline: true },
-    { name: 'Verdict',  value: cap(c.verdict || 'pending'),  inline: true },
+    { name: 'Status',  value: cap(c.status),               inline: true },
+    { name: 'Plea',    value: cap(c.plea || 'not entered'), inline: true },
+    { name: 'Verdict', value: cap(c.verdict || 'pending'),  inline: true },
   ];
-  if (c.sentence) fields.push({ name: 'Sentence', value: c.sentence, inline: false });
+  if (c.sentence)  fields.push({ name: 'Sentence',     value: c.sentence,        inline: false });
   if (c.courtDate) fields.push({ name: 'Hearing Date', value: fmtDate(c.courtDate), inline: true });
+  fields.push({ name: 'Updated By', value: updatedBy || 'Portal Staff', inline: true });
   return new EmbedBuilder()
-    .setTitle(`📊 Case Updated — ${c.caseNumber}`)
+    .setTitle(`Case Updated — ${c.caseNumber}`)
     .setColor(color[c.status] || 0x6b7280)
+    .setThumbnail(DOJ_LOGO)
     .setDescription(`**${c.title}** has been updated on the DOJ Portal.`)
-    .addFields(...fields, { name: 'Updated By', value: updatedBy || 'Portal Staff', inline: true })
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .addFields(...fields)
+    .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
@@ -271,30 +279,31 @@ function buildCasesMenu() {
   );
 }
 
-// ── Build the warrant/case header embeds ──────────────────────────────────────
 function buildWarrantHeaderEmbed(count) {
   return new EmbedBuilder()
     .setTitle('Active Warrant Lookup')
+    .setThumbnail(DOJ_LOGO)
     .setDescription(
       count > 0
         ? `Select a warrant from the dropdown below to view its full details.\nResults are shown only to you.\n\n**Active Warrants on File:** ${count}`
         : 'No active warrants on file at this time.'
     )
     .setColor(0xef4444)
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
 function buildCaseHeaderEmbed(count) {
   return new EmbedBuilder()
     .setTitle('Active Case Lookup')
+    .setThumbnail(DOJ_LOGO)
     .setDescription(
       count > 0
         ? `Select a case from the dropdown below to view its full details.\nResults are shown only to you.\n\n**Active Cases on File:** ${count}`
         : 'No active cases on file at this time.'
     )
     .setColor(0x3b82f6)
-    .setFooter({ text: 'State of Texas — Department of Justice' })
+    .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
     .setTimestamp();
 }
 
@@ -313,10 +322,10 @@ let ready = false;
 async function syncGuildMembers() {
   if (!GUILD_ID) return 0;
   try {
-    const guild = await client.guilds.fetch(GUILD_ID);
+    const guild   = await client.guilds.fetch(GUILD_ID);
     const members = await guild.members.fetch();
-    const defendants = readJSON(DEFENDANTS_FILE);
-    const existingNames = new Set(defendants.map(d => (d.fullName||'').toLowerCase()));
+    const defendants   = readJSON(DEFENDANTS_FILE);
+    const existingNames = new Set(defendants.map(d => (d.fullName || '').toLowerCase()));
     let added = 0;
     for (const [, m] of members) {
       if (m.user.bot) continue;
@@ -347,7 +356,7 @@ client.once(Events.ClientReady, async () => {
   await syncGuildMembers();
 });
 
-// ── Auto-refresh: edit the stored embeds with latest data ─────────────────────
+// ── Auto-refresh stored embeds ─────────────────────────────────────────────────
 async function refreshEmbeds() {
   if (!ready) return;
   const cfg = readConfig();
@@ -358,10 +367,7 @@ async function refreshEmbeds() {
       const msg = await ch.messages.fetch(cfg.warrantMessageId);
       const activeWarrants = readJSON(WARRANTS_FILE).filter(w => w.status === 'active');
       const row = buildWarrantsMenu();
-      await msg.edit({
-        embeds: [buildWarrantHeaderEmbed(activeWarrants.length)],
-        components: row ? [row] : []
-      });
+      await msg.edit({ embeds: [buildWarrantHeaderEmbed(activeWarrants.length)], components: row ? [row] : [] });
     } catch (err) {
       console.error('[DOJ Bot] Could not refresh warrant embed:', err.message);
     }
@@ -373,17 +379,14 @@ async function refreshEmbeds() {
       const msg = await ch.messages.fetch(cfg.caseMessageId);
       const activeCases = readJSON(CASES_FILE).filter(c => !['closed', 'dismissed'].includes(c.status));
       const row = buildCasesMenu();
-      await msg.edit({
-        embeds: [buildCaseHeaderEmbed(activeCases.length)],
-        components: row ? [row] : []
-      });
+      await msg.edit({ embeds: [buildCaseHeaderEmbed(activeCases.length)], components: row ? [row] : [] });
     } catch (err) {
       console.error('[DOJ Bot] Could not refresh case embed:', err.message);
     }
   }
 }
 
-// ── Notify linked case threads of a status update ─────────────────────────────
+// ── Notify linked case threads of a portal update ─────────────────────────────
 async function notifyCaseUpdate(caseId, updatedBy) {
   if (!ready) return;
   try {
@@ -393,26 +396,26 @@ async function notifyCaseUpdate(caseId, updatedBy) {
 
     const { discoveryThreadId, documentsThreadId } = c.discordLink;
 
-    // Post status update embed in Discovery thread
     if (discoveryThreadId) {
       const thread = await client.channels.fetch(discoveryThreadId).catch(() => null);
       if (thread) {
         await thread.send({ embeds: [buildCaseStatusUpdateEmbed(c, updatedBy)] });
 
-        // Lock both threads if case is now closed or dismissed
         if (['closed', 'dismissed'].includes(c.status)) {
           const reason = `Case ${c.caseNumber} ${c.status} on DOJ Portal`;
           await thread.setLocked(true, reason).catch(() => {});
           await thread.send({
             embeds: [
               new EmbedBuilder()
-                .setTitle(`🔒 Thread Locked — ${c.caseNumber}`)
+                .setTitle(`Thread Locked — ${c.caseNumber}`)
                 .setColor(0x6b7280)
+                .setThumbnail(DOJ_LOGO)
                 .setDescription(
                   `This case has been **${c.status}** on the DOJ Portal.\n\n` +
-                  `This thread is now locked and preserved as an official record.\n` +
+                  `This thread is now locked and preserved as an official record. ` +
                   `All exhibits and documents remain accessible on the portal.`
                 )
+                .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
                 .setTimestamp()
             ]
           }).catch(() => {});
@@ -420,7 +423,6 @@ async function notifyCaseUpdate(caseId, updatedBy) {
       }
     }
 
-    // Lock documents thread too if case is closed/dismissed
     if (['closed', 'dismissed'].includes(c.status) && documentsThreadId) {
       const docsThread = await client.channels.fetch(documentsThreadId).catch(() => null);
       if (docsThread) await docsThread.setLocked(true).catch(() => {});
@@ -430,15 +432,12 @@ async function notifyCaseUpdate(caseId, updatedBy) {
   }
 }
 
-// ── Thread message handler — exhibit and document detection ───────────────────
-const PDF_EXTS   = new Set(['.pdf']);
-const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.m4v']);
-
+// ── Thread message handler — exhibit and document cataloging ──────────────────
 async function handleThreadMessage(message) {
   if (!message.attachments.size) return;
 
   const threadId = message.channel.id;
-  const cases = readJSON(CASES_FILE);
+  const cases    = readJSON(CASES_FILE);
 
   const cIdx = cases.findIndex(x =>
     x.discordLink && (
@@ -448,48 +447,46 @@ async function handleThreadMessage(message) {
   );
   if (cIdx === -1) return;
 
-  const c = cases[cIdx];
+  const c          = cases[cIdx];
   const isDiscovery = c.discordLink.discoveryThreadId === threadId;
   const isDocuments = c.discordLink.documentsThreadId === threadId;
-  const addedBy = message.member?.displayName || message.author.username;
+  const addedBy     = message.member?.displayName || message.author.username;
 
   let newExhibitCount = 0;
-  let newDocCount = 0;
+  let newDocCount     = 0;
 
   for (const [, attachment] of message.attachments) {
-    const ext = path.extname(attachment.name || '').toLowerCase();
-    const isPdf   = PDF_EXTS.has(ext);
-    const isVideo = VIDEO_EXTS.has(ext);
+    const ext  = path.extname(attachment.name || '').toLowerCase().slice(1) || 'file';
 
-    if (isDiscovery && (isPdf || isVideo)) {
+    if (isDiscovery) {
       if (!cases[cIdx].exhibits) cases[cIdx].exhibits = [];
       const letter = toExhibitLetter(cases[cIdx].exhibits.length);
       cases[cIdx].exhibits.push({
-        id: newId(),
+        id:              newId(),
         letter,
-        filename: attachment.name,
-        url: attachment.url,
-        type: isPdf ? 'pdf' : 'video',
+        filename:        attachment.name,
+        url:             attachment.url,
+        type:            ext.toUpperCase(),
         addedBy,
         addedByDiscordId: message.author.id,
-        addedAt: new Date().toISOString(),
-        messageId: message.id,
+        addedAt:         new Date().toISOString(),
+        messageId:       message.id,
         threadId,
-        status: 'pending',
-        description: ''
+        status:          'pending',
+        description:     ''
       });
       newExhibitCount++;
     } else if (isDocuments) {
       if (!cases[cIdx].courtDocuments) cases[cIdx].courtDocuments = [];
       cases[cIdx].courtDocuments.push({
-        id: newId(),
-        filename: attachment.name,
-        url: attachment.url,
-        type: (ext.slice(1) || 'file').toUpperCase(),
+        id:              newId(),
+        filename:        attachment.name,
+        url:             attachment.url,
+        type:            ext.toUpperCase(),
         addedBy,
         addedByDiscordId: message.author.id,
-        addedAt: new Date().toISOString(),
-        messageId: message.id
+        addedAt:         new Date().toISOString(),
+        messageId:       message.id
       });
       newDocCount++;
     }
@@ -500,10 +497,8 @@ async function handleThreadMessage(message) {
     writeJSON(CASES_FILE, cases);
   }
 
-  // ── React and confirm each new exhibit ───────────────────────────────────────
+  // Confirm each new exhibit
   if (newExhibitCount > 0) {
-    await message.react('📎').catch(() => {});
-
     const freshCases  = readJSON(CASES_FILE);
     const freshCase   = freshCases[cIdx];
     const newExhibits = freshCase.exhibits.slice(-newExhibitCount);
@@ -512,27 +507,27 @@ async function handleThreadMessage(message) {
       await message.channel.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle(`📁 Exhibit ${exhibit.letter} Cataloged`)
+            .setTitle(`Exhibit ${exhibit.letter} Cataloged — ${c.caseNumber}`)
             .setColor(0x7c3aed)
+            .setThumbnail(DOJ_LOGO)
             .setDescription(
-              `**${exhibit.filename}** has been officially cataloged as **Exhibit ${exhibit.letter}** ` +
-              `in case **${c.caseNumber}**.`
+              `**${exhibit.filename}** has been officially cataloged as **Exhibit ${exhibit.letter}** in case **${c.caseNumber}**.`
             )
             .addFields(
-              { name: 'Type',        value: exhibit.type.toUpperCase(),          inline: true },
-              { name: 'Submitted By', value: exhibit.addedBy,                   inline: true },
-              { name: 'Status',      value: '⏳ Pending admission by the court', inline: true }
+              { name: 'File Type',    value: exhibit.type,                            inline: true },
+              { name: 'Submitted By', value: exhibit.addedBy,                         inline: true },
+              { name: 'Status',       value: 'Pending admission by the court',        inline: true }
             )
-            .setFooter({ text: 'Exhibits can be admitted or rejected from the DOJ Portal' })
+            .setFooter({ text: 'Exhibits can be admitted or rejected from the DOJ Portal', iconURL: DOJ_LOGO })
             .setTimestamp()
         ]
       }).catch(() => {});
     }
 
-    // Update (or create) the pinned exhibit registry
+    // Update or create the pinned exhibit registry
     try {
       const registryEmbed = buildExhibitRegistryEmbed(freshCase);
-      const regMsgId = freshCase.discordLink?.exhibitRegistryMessageId;
+      const regMsgId      = freshCase.discordLink?.exhibitRegistryMessageId;
 
       if (regMsgId) {
         const existing = await message.channel.messages.fetch(regMsgId).catch(() => null);
@@ -561,20 +556,20 @@ async function handleThreadMessage(message) {
     }
   }
 
-  // ── Confirm document filing ───────────────────────────────────────────────────
+  // Confirm documents filed
   if (isDocuments && newDocCount > 0) {
-    await message.react('⚖️').catch(() => {});
     await message.channel.send({
       embeds: [
         new EmbedBuilder()
           .setColor(0x3b82f6)
-          .setTitle(`📄 ${newDocCount} Document${newDocCount > 1 ? 's' : ''} Filed`)
+          .setTitle(`${newDocCount} Document${newDocCount > 1 ? 's' : ''} Filed — ${c.caseNumber}`)
+          .setThumbnail(DOJ_LOGO)
           .setDescription(
             `${newDocCount} document${newDocCount > 1 ? 's have' : ' has'} been officially filed ` +
-            `in case **${c.caseNumber}** and logged on the DOJ Portal.`
+            `in case **${c.caseNumber}** and recorded on the DOJ Portal.`
           )
           .addFields({ name: 'Filed By', value: addedBy, inline: true })
-          .setFooter({ text: 'State of Texas — Department of Justice' })
+          .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
           .setTimestamp()
       ]
     }).catch(() => {});
@@ -590,7 +585,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const warrantChannel = interaction.options.getChannel('warrant_channel');
     const caseChannel    = interaction.options.getChannel('case_channel');
-
     const activeWarrants = readJSON(WARRANTS_FILE).filter(w => w.status === 'active');
     const activeCases    = readJSON(CASES_FILE).filter(c => !['closed', 'dismissed'].includes(c.status));
 
@@ -603,7 +597,7 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     } catch (err) {
       console.error('[DOJ Bot] Failed to post warrant embed:', err.message);
-      return interaction.editReply({ content: `Could not post to <#${warrantChannel.id}>. Make sure the bot has permission to send messages in that channel.` });
+      return interaction.editReply({ content: `Could not post to <#${warrantChannel.id}>. Ensure the bot has Send Messages permission in that channel.` });
     }
 
     const caseRow = buildCasesMenu();
@@ -615,7 +609,7 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     } catch (err) {
       console.error('[DOJ Bot] Failed to post case embed:', err.message);
-      return interaction.editReply({ content: `Could not post to <#${caseChannel.id}>. Make sure the bot has permission to send messages in that channel.` });
+      return interaction.editReply({ content: `Could not post to <#${caseChannel.id}>. Ensure the bot has Send Messages permission in that channel.` });
     }
 
     writeConfig({
@@ -630,7 +624,7 @@ client.on(Events.InteractionCreate, async interaction => {
         `Setup complete.\n` +
         `Warrant lookup posted in <#${warrantChannel.id}>\n` +
         `Case lookup posted in <#${caseChannel.id}>\n\n` +
-        `The embeds will now update automatically whenever a case or warrant is added, edited, or removed.`
+        `Embeds will update automatically whenever a case or warrant is added, edited, or removed.`
     });
   }
 
@@ -640,7 +634,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!canLinkCase(interaction.member)) {
       return interaction.editReply({
-        content: '❌ You need a **Clerk, Attorney, Judge, or AG** role to link cases to Discord.'
+        content: 'Access denied. You require a Clerk, Attorney, Judge, or AG role to link cases.'
       });
     }
 
@@ -650,7 +644,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (cIdx === -1) {
       return interaction.editReply({
-        content: `❌ No case found with number **${caseNumber}**.\n\nDouble-check the case number on the DOJ Portal.`
+        content: `No case found with number **${caseNumber}**. Verify the case number on the DOJ Portal.`
       });
     }
 
@@ -659,104 +653,100 @@ client.on(Events.InteractionCreate, async interaction => {
     if (c.discordLink && c.discordLink.discoveryThreadId) {
       return interaction.editReply({
         content:
-          `⚠️ Case **${c.caseNumber}** is already linked.\n\n` +
-          `📁 Discovery: <#${c.discordLink.discoveryThreadId}>\n` +
-          `📄 Documents: <#${c.discordLink.documentsThreadId}>\n\n` +
-          `Use \`/unlink ${c.caseNumber}\` first to re-link it.`
+          `Case **${c.caseNumber}** is already linked.\n\n` +
+          `Discovery: <#${c.discordLink.discoveryThreadId}>\n` +
+          `Documents: <#${c.discordLink.documentsThreadId}>\n\n` +
+          `Use \`/unlink ${c.caseNumber}\` to remove the existing link first.`
       });
     }
 
     const channel = interaction.channel;
     if (!channel || !channel.threads) {
       return interaction.editReply({
-        content: '❌ Threads cannot be created in this channel type. Run this command in a standard text channel.'
+        content: 'Threads cannot be created in this channel type. Run this command in a standard text channel.'
       });
     }
 
     try {
       const linkedBy = interaction.member.displayName || interaction.user.username;
 
-      // Post announcement in the channel
-      const announcementEmbed = buildCaseLinkAnnouncementEmbed(c, linkedBy);
-      const announcementMsg   = await channel.send({ embeds: [announcementEmbed] });
+      const announcementMsg = await channel.send({ embeds: [buildCaseLinkAnnouncementEmbed(c, linkedBy)] });
 
-      // Create Discovery thread
       const discoveryThread = await channel.threads.create({
-        name: `🔍 Discovery — ${c.caseNumber}`,
+        name: `Discovery — ${c.caseNumber}`,
         autoArchiveDuration: 10080,
         reason: `Case ${c.caseNumber} linked by ${interaction.user.username}`
       });
 
-      // Create Documents thread
       const documentsThread = await channel.threads.create({
-        name: `📄 Documents — ${c.caseNumber}`,
+        name: `Documents — ${c.caseNumber}`,
         autoArchiveDuration: 10080,
         reason: `Case ${c.caseNumber} linked by ${interaction.user.username}`
       });
 
-      // ── Welcome message in Discovery thread ──────────────────────────────────
+      // Welcome message in Discovery thread
       const discoveryWelcome = await discoveryThread.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle(`🔍 Discovery — ${c.caseNumber}`)
+            .setTitle(`Discovery — ${c.caseNumber}`)
             .setColor(0x7c3aed)
+            .setThumbnail(DOJ_LOGO)
             .setDescription(
               `**${c.title}**\n\n` +
-              `This is the official **Discovery** thread for this case.\n\n` +
-              `📎 Send any **PDF** or **video** file here and it will be automatically cataloged as an exhibit ` +
-              `(Exhibit A, B, C…) and recorded on the DOJ Portal.\n\n` +
-              `⚖️ The presiding judge can **admit** or **reject** exhibits from the portal.\n\n` +
-              `A live Exhibit Registry is pinned below — it updates automatically with every new exhibit.`
+              `This is the official Discovery thread for this case.\n\n` +
+              `Any file submitted here — regardless of type — will be automatically cataloged as a numbered exhibit (Exhibit A, B, C...) and recorded on the DOJ Portal.\n\n` +
+              `The presiding judge may admit or reject exhibits directly from the portal. ` +
+              `A live Exhibit Registry is pinned below and updates with each new submission.`
             )
             .addFields(
-              { name: 'Defendant',   value: c.subject || 'N/A',        inline: true },
-              { name: 'Prosecutor',  value: c.prosecutor || 'N/A',     inline: true },
-              { name: 'Defense',     value: c.defenseAttorney || 'N/A', inline: true },
-              { name: 'Status',      value: cap(c.status),             inline: true },
-              { name: 'Linked By',   value: linkedBy,                  inline: true }
+              { name: 'Defendant',  value: c.subject || 'N/A',         inline: true },
+              { name: 'Prosecutor', value: c.prosecutor || 'N/A',      inline: true },
+              { name: 'Defense',    value: c.defenseAttorney || 'N/A', inline: true },
+              { name: 'Status',     value: cap(c.status),              inline: true },
+              { name: 'Linked By',  value: linkedBy,                   inline: true }
             )
-            .setFooter({ text: 'State of Texas — Department of Justice' })
+            .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
             .setTimestamp()
         ]
       });
       await discoveryWelcome.pin().catch(() => {});
 
-      // Post initial (empty) exhibit registry and pin it
       const registryMsg = await discoveryThread.send({ embeds: [buildExhibitRegistryEmbed(c)] });
       await registryMsg.pin().catch(() => {});
 
-      // ── Welcome message in Documents thread ──────────────────────────────────
+      // Welcome message in Documents thread
       await documentsThread.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle(`📄 Court Documents — ${c.caseNumber}`)
+            .setTitle(`Court Documents — ${c.caseNumber}`)
             .setColor(0x3b82f6)
+            .setThumbnail(DOJ_LOGO)
             .setDescription(
               `**${c.title}**\n\n` +
-              `This is the official **Court Documents** thread for this case.\n\n` +
-              `📂 Post **motions, orders, complaints, filings**, and other official court documents here.\n` +
+              `This is the official Court Documents thread for this case.\n\n` +
+              `Post motions, orders, complaints, and official filings here. ` +
               `All documents are automatically logged to the DOJ Portal.`
             )
             .addFields(
               { name: 'Defendant', value: c.subject || 'N/A', inline: true },
               { name: 'Status',    value: cap(c.status),       inline: true }
             )
-            .setFooter({ text: 'State of Texas — Department of Justice' })
+            .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
             .setTimestamp()
         ]
       });
 
-      // ── Save link data to the case ────────────────────────────────────────────
+      // Save link to case
       cases[cIdx].discordLink = {
-        channelId:               channel.id,
-        channelName:             channel.name,
-        discoveryThreadId:       discoveryThread.id,
-        documentsThreadId:       documentsThread.id,
+        channelId:                channel.id,
+        channelName:              channel.name,
+        discoveryThreadId:        discoveryThread.id,
+        documentsThreadId:        documentsThread.id,
         linkedBy,
-        linkedByDiscordId:       interaction.user.id,
-        linkedAt:                new Date().toISOString(),
-        guildId:                 interaction.guildId,
-        announcementMessageId:   announcementMsg.id,
+        linkedByDiscordId:        interaction.user.id,
+        linkedAt:                 new Date().toISOString(),
+        guildId:                  interaction.guildId,
+        announcementMessageId:    announcementMsg.id,
         exhibitRegistryMessageId: registryMsg.id
       };
       cases[cIdx].updatedAt = new Date().toISOString();
@@ -764,15 +754,15 @@ client.on(Events.InteractionCreate, async interaction => {
 
       return interaction.editReply({
         content:
-          `✅ **${c.caseNumber} — ${c.title}** is now linked!\n\n` +
-          `📁 **Discovery:** <#${discoveryThread.id}>\n` +
-          `📄 **Documents:** <#${documentsThread.id}>\n\n` +
-          `Drop **PDF or video** files in the Discovery thread to auto-catalog them as exhibits.`
+          `Case **${c.caseNumber} — ${c.title}** has been successfully linked.\n\n` +
+          `Discovery: <#${discoveryThread.id}>\n` +
+          `Documents: <#${documentsThread.id}>\n\n` +
+          `Submit any file to the Discovery thread to catalog it as an exhibit.`
       });
 
     } catch (err) {
       console.error('[DOJ Bot] /link error:', err.message);
-      return interaction.editReply({ content: `❌ Failed to link case: ${err.message}` });
+      return interaction.editReply({ content: `Failed to link case: ${err.message}` });
     }
   }
 
@@ -782,7 +772,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!canLinkCase(interaction.member)) {
       return interaction.editReply({
-        content: '❌ You need a **Clerk, Attorney, Judge, or AG** role to unlink cases.'
+        content: 'Access denied. You require a Clerk, Attorney, Judge, or AG role to unlink cases.'
       });
     }
 
@@ -791,32 +781,33 @@ client.on(Events.InteractionCreate, async interaction => {
     const cIdx       = cases.findIndex(x => x.caseNumber.toUpperCase() === caseNumber);
 
     if (cIdx === -1) {
-      return interaction.editReply({ content: `❌ No case found with number **${caseNumber}**.` });
+      return interaction.editReply({ content: `No case found with number **${caseNumber}**.` });
     }
 
     const c    = cases[cIdx];
     const link = c.discordLink;
 
     if (!link) {
-      return interaction.editReply({ content: `⚠️ Case **${c.caseNumber}** is not linked to any Discord threads.` });
+      return interaction.editReply({ content: `Case **${c.caseNumber}** is not linked to any Discord threads.` });
     }
 
     const unlinkedBy = interaction.member.displayName || interaction.user.username;
-    cases[cIdx].discordLink  = null;
-    cases[cIdx].updatedAt    = new Date().toISOString();
+    cases[cIdx].discordLink = null;
+    cases[cIdx].updatedAt   = new Date().toISOString();
     writeJSON(CASES_FILE, cases);
 
     const unlinkEmbed = new EmbedBuilder()
-      .setTitle(`🔗 Case Unlinked — ${c.caseNumber}`)
+      .setTitle(`Case Unlinked — ${c.caseNumber}`)
       .setColor(0xef4444)
+      .setThumbnail(DOJ_LOGO)
       .setDescription(
-        `This case has been **unlinked** from Discord by **${unlinkedBy}**.\n\n` +
-        `This thread is preserved as an archived record.\n` +
+        `This case has been unlinked from Discord by **${unlinkedBy}**.\n\n` +
+        `This thread is preserved as an archived record. ` +
         `All exhibits remain accessible on the DOJ Portal.`
       )
+      .setFooter({ text: 'State of Texas — Department of Justice', iconURL: DOJ_LOGO })
       .setTimestamp();
 
-    // Notify and archive both threads
     if (link.discoveryThreadId) {
       const thread = await client.channels.fetch(link.discoveryThreadId).catch(() => null);
       if (thread) {
@@ -833,7 +824,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     return interaction.editReply({
-      content: `✅ Case **${c.caseNumber}** has been unlinked. Both threads have been archived.`
+      content: `Case **${c.caseNumber}** has been unlinked. Both threads have been archived.`
     });
   }
 
@@ -883,7 +874,7 @@ client.on(Events.MessageCreate, async message => {
   const content = message.content.trim();
 
   if (content === '$git restart') {
-    await ownerDM(message, 'Pulling latest code and restarting the server…');
+    await ownerDM(message, 'Pulling latest code and restarting the server...');
     const { err, stdout, stderr } = await runCmd('git pull && npm install --production && systemctl restart doj-portal');
     if (err) {
       await message.author.send(`Restart failed:\n\`\`\`\n${(stderr || err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
@@ -894,7 +885,7 @@ client.on(Events.MessageCreate, async message => {
   }
 
   if (content === '$git stash') {
-    await ownerDM(message, 'Running git stash…');
+    await ownerDM(message, 'Running git stash...');
     const { err, stdout, stderr } = await runCmd('git stash');
     if (err) {
       await message.author.send(`git stash failed:\n\`\`\`\n${(stderr || err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
@@ -922,7 +913,7 @@ client.on(Events.MessageCreate, async message => {
   }
 
   if (content === '$refresh') {
-    await ownerDM(message, 'Refreshing embeds and syncing guild members…');
+    await ownerDM(message, 'Refreshing embeds and syncing guild members...');
     try {
       const [, added] = await Promise.all([refreshEmbeds(), syncGuildMembers()]);
       await message.author.send(`Done. Embeds updated. ${added} new player record(s) synced.`).catch(() => {});
@@ -932,7 +923,7 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
-// ── Text command helpers ──────────────────────────────────────────────────────
+// ── Owner DM helpers ──────────────────────────────────────────────────────────
 async function ownerDM(message, text) {
   try { await message.delete(); } catch (_) {}
   try {

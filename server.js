@@ -1021,11 +1021,11 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
   ${/* ── Discord Integration ── */'' }
   <div class="card">
     <div class="card-header">
-      <span class="card-title">🔗 Discord Integration</span>
+      <span class="card-title">Discord Integration</span>
       ${c.discordLink ? `
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-          <a class="btn-sm" href="https://discord.com/channels/${escapeHtml(c.discordLink.guildId||'')}/${escapeHtml(c.discordLink.discoveryThreadId||'')}" target="_blank" rel="noopener">📁 Discovery</a>
-          <a class="btn-sm" href="https://discord.com/channels/${escapeHtml(c.discordLink.guildId||'')}/${escapeHtml(c.discordLink.documentsThreadId||'')}" target="_blank" rel="noopener">📄 Documents</a>
+          <a class="btn-sm" href="https://discord.com/channels/${escapeHtml(c.discordLink.guildId||'')}/${escapeHtml(c.discordLink.discoveryThreadId||'')}" target="_blank" rel="noopener">Discovery Thread</a>
+          <a class="btn-sm" href="https://discord.com/channels/${escapeHtml(c.discordLink.guildId||'')}/${escapeHtml(c.discordLink.documentsThreadId||'')}" target="_blank" rel="noopener">Documents Thread</a>
         </div>` : ''}
     </div>
     ${c.discordLink ? `
@@ -1038,14 +1038,14 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
     </div>` : `
     <div class="empty-state" style="padding:1.25rem 0">
       <p style="margin:0">Not linked to Discord yet.</p>
-      <p class="muted-text" style="margin:0.4rem 0 0">Run <code style="background:#f3f4f6;padding:0.1rem 0.4rem;border-radius:4px">/link ${escapeHtml(c.caseNumber)}</code> in your Discord server to create Discovery and Documents threads.</p>
+      <p class="muted-text" style="margin:0.4rem 0 0">Run <code style="background:#f3f4f6;padding:0.1rem 0.4rem;border-radius:4px">/link ${escapeHtml(c.caseNumber)}</code> in your Discord server to create Discovery and Documents threads and enable automatic exhibit cataloging.</p>
     </div>`}
   </div>
 
   ${/* ── Exhibits (from Discord Discovery thread) ── */'' }
   <div class="card">
     <div class="card-header">
-      <span class="card-title">📁 Exhibits</span>
+      <span class="card-title">Exhibits</span>
       ${(c.exhibits||[]).length ? `<span class="badge badge-purple">${(c.exhibits||[]).length} exhibit${(c.exhibits||[]).length!==1?'s':''}</span>` : ''}
     </div>
     ${(c.exhibits||[]).length ? `
@@ -1054,7 +1054,7 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
     </div>
     ${(c.exhibits||[]).map(e => {
       const statusClass = {admitted:'badge-green',rejected:'badge-red',pending:'badge-yellow'}[e.status]||'badge-gray';
-      const statusLabel = {admitted:'✅ Admitted',rejected:'❌ Rejected',pending:'⏳ Pending'}[e.status]||'Pending';
+      const statusLabel = {admitted:'Admitted',rejected:'Rejected',pending:'Pending'}[e.status]||'Pending';
       return `
       <div style="display:grid;grid-template-columns:56px 1.5fr 80px 80px 1fr 1fr ${canWrite?'120px':''};gap:0.5rem;align-items:center;padding:0.6rem 0.75rem;border-bottom:1px solid #f3f4f6">
         <span class="mono fw" style="color:var(--color-primary)">Exh.&nbsp;${escapeHtml(e.letter)}</span>
@@ -1073,18 +1073,18 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
     }).join('')}
     ${canEditCase ? `
     <div style="padding:0.75rem;border-top:1px solid #f3f4f6;font-size:0.85rem;color:#6b7280">
-      To add exhibits, send a <strong>PDF or video</strong> file in the <strong>Discovery</strong> Discord thread for this case — they will be auto-cataloged here.
+      To add exhibits, post any file in the <strong>Discovery</strong> thread for this case in Discord — it will be automatically cataloged here.
     </div>` : ''}` : `
     <div class="empty-state" style="padding:1rem 0">
-      <p class="muted-text" style="margin:0">No exhibits cataloged yet.</p>
-      ${c.discordLink ? `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Send a PDF or video to the Discovery thread in Discord to add exhibits.</p>` : `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Link this case to Discord first using <code>/link ${escapeHtml(c.caseNumber)}</code>.</p>`}
+      <p class="muted-text" style="margin:0">No exhibits on file.</p>
+      ${c.discordLink ? `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Post any file in the Discovery thread in Discord to catalog it as an exhibit.</p>` : `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Link this case to Discord first using <code>/link ${escapeHtml(c.caseNumber)}</code>.</p>`}
     </div>`}
   </div>
 
   ${/* ── Court Documents (from Discord Documents thread) ── */'' }
   <div class="card">
     <div class="card-header">
-      <span class="card-title">📄 Court Documents</span>
+      <span class="card-title">Court Documents</span>
       ${(c.courtDocuments||[]).length ? `<span class="badge badge-blue">${(c.courtDocuments||[]).length} document${(c.courtDocuments||[]).length!==1?'s':''}</span>` : ''}
     </div>
     ${(c.courtDocuments||[]).length ? `
@@ -1101,7 +1101,7 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
     </div>`).join('')}` : `
     <div class="empty-state" style="padding:1rem 0">
       <p class="muted-text" style="margin:0">No court documents filed yet.</p>
-      ${c.discordLink ? `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Post files in the Documents Discord thread to file them here.</p>` : `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Link this case to Discord first using <code>/link ${escapeHtml(c.caseNumber)}</code>.</p>`}
+      ${c.discordLink ? `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Post files in the Documents thread in Discord to file them here.</p>` : `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Link this case to Discord first using <code>/link ${escapeHtml(c.caseNumber)}</code>.</p>`}
     </div>`}
   </div>
 

@@ -1,1 +1,77 @@
-[]
+[
+  {
+    "id": "af3c1167105eaa8e",
+    "caseNumber": "DOJ-2026-0001",
+    "title": "UNITED STATES VS TEST",
+    "subject": "TEST",
+    "type": "criminal",
+    "caseGrade": "1st Degree Felony",
+    "status": "open",
+    "priority": "high",
+    "county": "Tarrant",
+    "courtType": "Texas District Court",
+    "location": "TEST",
+    "assignedOfficer": "TESTTESTTEST",
+    "prosecutor": "TESTTEST",
+    "defenseAttorney": "TEST",
+    "presidingJudge": "TESTTESTTESTTEST",
+    "plea": "not guilty",
+    "bondAmount": null,
+    "courtDate": "2026-03-30",
+    "trialDate": "2026-03-31",
+    "verdict": "pending",
+    "sentence": "",
+    "charges": [
+      "Murder (TPC § 19.02)",
+      "Manslaughter (TPC § 19.04)",
+      "Deadly Conduct (TPC § 22.05)"
+    ],
+    "notes": "TESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTEST",
+    "caseNotes": [],
+    "createdBy": "justawacko_",
+    "createdAt": "2026-03-27T15:33:09.455Z",
+    "updatedAt": "2026-03-27T15:36:02.867Z",
+    "discordLink": {
+      "channelId": "1487111815157645513",
+      "channelName": "dc-123",
+      "discoveryThreadId": "1487112314661638297",
+      "documentsThreadId": "1487112316150349865",
+      "linkedBy": "AG | Saul Goodman",
+      "linkedByDiscordId": "848356730256883744",
+      "linkedAt": "2026-03-27T15:33:27.150Z",
+      "guildId": "1478249115530821685",
+      "announcementMessageId": "1487112313533366285",
+      "exhibitRegistryMessageId": "1487112320588189696"
+    },
+    "courtDocuments": [
+      {
+        "id": "mn92a2xigvjx47",
+        "filename": "warrant_W-2026-0002_1774548223035.pdf",
+        "url": "https://cdn.discordapp.com/attachments/1487112316150349865/1487112413919576196/warrant_W-2026-0002_1774548223035.pdf?ex=69c7f4dc&is=69c6a35c&hm=46fdd973b6d606905e7e22499cbfdd01466887fe2739e63b73b5e51992b71255&",
+        "type": "PDF",
+        "addedBy": "AG | Saul Goodman",
+        "addedByDiscordId": "848356730256883744",
+        "addedAt": "2026-03-27T15:33:49.014Z",
+        "messageId": "1487112414297325660"
+      }
+    ],
+    "exhibits": [
+      {
+        "id": "mn92ak25evorko",
+        "letter": "A",
+        "filename": "warrant_W-2026-0002_1774548223035.pdf",
+        "url": "https://cdn.discordapp.com/attachments/1487112314661638297/1487112507607748852/warrant_W-2026-0002_1774548223035.pdf?ex=69c7f4f3&is=69c6a373&hm=09ecb18d2cc14e97b87b9c2e5baaa4916be49c6c85a06e67412545dd8fe0b3e5&",
+        "type": "pdf",
+        "addedBy": "AG | Saul Goodman",
+        "addedByDiscordId": "848356730256883744",
+        "addedAt": "2026-03-27T15:34:11.213Z",
+        "messageId": "1487112508044214405",
+        "threadId": "1487112314661638297",
+        "status": "admitted",
+        "description": "",
+        "statusSetBy": "justawacko_",
+        "statusSetAt": "2026-03-27T15:36:02.867Z"
+      }
+    ]
+  }
+]
