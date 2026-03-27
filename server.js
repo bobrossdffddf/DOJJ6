@@ -1017,6 +1017,94 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
       <button class="btn-primary" style="margin-top:0.5rem" type="submit">Add Note</button>
     </form>
   </div>
+
+  ${/* ── Discord Integration ── */'' }
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">🔗 Discord Integration</span>
+      ${c.discordLink ? `
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <a class="btn-sm" href="https://discord.com/channels/${escapeHtml(c.discordLink.guildId||'')}/${escapeHtml(c.discordLink.discoveryThreadId||'')}" target="_blank" rel="noopener">📁 Discovery</a>
+          <a class="btn-sm" href="https://discord.com/channels/${escapeHtml(c.discordLink.guildId||'')}/${escapeHtml(c.discordLink.documentsThreadId||'')}" target="_blank" rel="noopener">📄 Documents</a>
+        </div>` : ''}
+    </div>
+    ${c.discordLink ? `
+    <div style="padding:0.75rem 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.5rem 1.5rem">
+      <div><div class="muted-text" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.2rem">Linked By</div><div>${escapeHtml(c.discordLink.linkedBy||'—')}</div></div>
+      <div><div class="muted-text" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.2rem">Linked</div><div>${fmtDateTime(c.discordLink.linkedAt)}</div></div>
+      <div><div class="muted-text" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.2rem">Channel</div><div>${escapeHtml(c.discordLink.channelName||'—')}</div></div>
+      <div><div class="muted-text" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.2rem">Exhibits</div><div>${(c.exhibits||[]).length} cataloged</div></div>
+      <div><div class="muted-text" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.2rem">Court Docs</div><div>${(c.courtDocuments||[]).length} filed</div></div>
+    </div>` : `
+    <div class="empty-state" style="padding:1.25rem 0">
+      <p style="margin:0">Not linked to Discord yet.</p>
+      <p class="muted-text" style="margin:0.4rem 0 0">Run <code style="background:#f3f4f6;padding:0.1rem 0.4rem;border-radius:4px">/link ${escapeHtml(c.caseNumber)}</code> in your Discord server to create Discovery and Documents threads.</p>
+    </div>`}
+  </div>
+
+  ${/* ── Exhibits (from Discord Discovery thread) ── */'' }
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📁 Exhibits</span>
+      ${(c.exhibits||[]).length ? `<span class="badge badge-purple">${(c.exhibits||[]).length} exhibit${(c.exhibits||[]).length!==1?'s':''}</span>` : ''}
+    </div>
+    ${(c.exhibits||[]).length ? `
+    <div class="table-header" style="grid-template-columns:56px 1.5fr 80px 80px 1fr 1fr ${canWrite?'120px':''}">
+      <span>Exhibit</span><span>File</span><span>Type</span><span>Status</span><span>Submitted</span><span>Description</span>${canWrite?'<span>Actions</span>':''}
+    </div>
+    ${(c.exhibits||[]).map(e => {
+      const statusClass = {admitted:'badge-green',rejected:'badge-red',pending:'badge-yellow'}[e.status]||'badge-gray';
+      const statusLabel = {admitted:'✅ Admitted',rejected:'❌ Rejected',pending:'⏳ Pending'}[e.status]||'Pending';
+      return `
+      <div style="display:grid;grid-template-columns:56px 1.5fr 80px 80px 1fr 1fr ${canWrite?'120px':''};gap:0.5rem;align-items:center;padding:0.6rem 0.75rem;border-bottom:1px solid #f3f4f6">
+        <span class="mono fw" style="color:var(--color-primary)">Exh.&nbsp;${escapeHtml(e.letter)}</span>
+        <span class="tr-cell"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px">${escapeHtml(e.filename)}</a></span>
+        <span>${badge(e.type.toUpperCase(),'badge-blue')}</span>
+        <span>${badge(statusLabel, statusClass)}</span>
+        <span class="muted-text" style="font-size:0.8rem">${escapeHtml(e.addedBy)}<br/>${fmtDate(e.addedAt)}</span>
+        <span class="muted-text" style="font-size:0.8rem">${escapeHtml(e.description||'—')}</span>
+        ${canWrite ? `
+        <span style="display:flex;gap:0.25rem;flex-wrap:wrap">
+          ${e.status!=='admitted' ? `<form method="post" action="/cases/${c.id}/exhibits/${e.id}/status" style="display:inline"><input type="hidden" name="status" value="admitted"/><button class="btn-sm" style="background:#22c55e;color:#fff;border:none;cursor:pointer;font-size:0.7rem;padding:0.2rem 0.45rem" type="submit">Admit</button></form>` : ''}
+          ${e.status!=='rejected' ? `<form method="post" action="/cases/${c.id}/exhibits/${e.id}/status" style="display:inline"><input type="hidden" name="status" value="rejected"/><button class="btn-sm" style="background:#ef4444;color:#fff;border:none;cursor:pointer;font-size:0.7rem;padding:0.2rem 0.45rem" type="submit">Reject</button></form>` : ''}
+          ${canDelete ? `<form method="post" action="/cases/${c.id}/exhibits/${e.id}/delete" style="display:inline"><button class="btn-sm btn-danger" style="font-size:0.7rem;padding:0.2rem 0.45rem" type="submit" onclick="return confirm('Remove this exhibit?')">Del</button></form>` : ''}
+        </span>` : ''}
+      </div>`;
+    }).join('')}
+    ${canEditCase ? `
+    <div style="padding:0.75rem;border-top:1px solid #f3f4f6;font-size:0.85rem;color:#6b7280">
+      To add exhibits, send a <strong>PDF or video</strong> file in the <strong>Discovery</strong> Discord thread for this case — they will be auto-cataloged here.
+    </div>` : ''}` : `
+    <div class="empty-state" style="padding:1rem 0">
+      <p class="muted-text" style="margin:0">No exhibits cataloged yet.</p>
+      ${c.discordLink ? `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Send a PDF or video to the Discovery thread in Discord to add exhibits.</p>` : `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Link this case to Discord first using <code>/link ${escapeHtml(c.caseNumber)}</code>.</p>`}
+    </div>`}
+  </div>
+
+  ${/* ── Court Documents (from Discord Documents thread) ── */'' }
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📄 Court Documents</span>
+      ${(c.courtDocuments||[]).length ? `<span class="badge badge-blue">${(c.courtDocuments||[]).length} document${(c.courtDocuments||[]).length!==1?'s':''}</span>` : ''}
+    </div>
+    ${(c.courtDocuments||[]).length ? `
+    <div class="table-header" style="grid-template-columns:1.5fr 80px 1fr 1fr ${canDelete?'80px':''}">
+      <span>Filename</span><span>Type</span><span>Filed By</span><span>Date Filed</span>${canDelete?'<span></span>':''}
+    </div>
+    ${(c.courtDocuments||[]).map(d => `
+    <div style="display:grid;grid-template-columns:1.5fr 80px 1fr 1fr ${canDelete?'80px':''};gap:0.5rem;align-items:center;padding:0.6rem 0.75rem;border-bottom:1px solid #f3f4f6">
+      <span><a href="${escapeHtml(d.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px">${escapeHtml(d.filename)}</a></span>
+      <span>${badge(d.type||'FILE','badge-gray')}</span>
+      <span class="muted-text">${escapeHtml(d.addedBy)}</span>
+      <span class="muted-text">${fmtDate(d.addedAt)}</span>
+      ${canDelete ? `<span><form method="post" action="/cases/${c.id}/courtdocs/${d.id}/delete" style="display:inline"><button class="btn-sm btn-danger" style="font-size:0.7rem" type="submit" onclick="return confirm('Remove this document?')">Del</button></form></span>` : ''}
+    </div>`).join('')}` : `
+    <div class="empty-state" style="padding:1rem 0">
+      <p class="muted-text" style="margin:0">No court documents filed yet.</p>
+      ${c.discordLink ? `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Post files in the Documents Discord thread to file them here.</p>` : `<p class="muted-text" style="margin:0.3rem 0 0;font-size:0.85rem">Link this case to Discord first using <code>/link ${escapeHtml(c.caseNumber)}</code>.</p>`}
+    </div>`}
+  </div>
+
   <div class="card">
     <div class="card-header">
       <span class="card-title">Evidence Log</span>
@@ -1127,6 +1215,7 @@ app.post('/cases/:id/edit', requirePerm('clerk'), (req, res) => {
   writeJSON(CASES_FILE, cases);
   logActivity('case_updated', `Case ${cases[idx].caseNumber} updated`, req.session.user.username);
   refreshBotEmbeds();
+  if (_bot && _bot.notifyCaseUpdate) _bot.notifyCaseUpdate(req.params.id, req.session.user.username).catch(()=>{});
   return res.redirect(`/cases/${req.params.id}`);
 });
 
@@ -1180,6 +1269,55 @@ app.post('/cases/:id/evidence/:evidenceId/delete', requirePerm('lawyer'), (req, 
   const idx = cases.findIndex(x=>x.id===req.params.id);
   if (idx===-1) return res.status(404).send('Not found.');
   cases[idx].evidence = (cases[idx].evidence||[]).filter(e=>e.id!==req.params.evidenceId);
+  cases[idx].updatedAt = new Date().toISOString();
+  writeJSON(CASES_FILE, cases);
+  return res.redirect(`/cases/${req.params.id}`);
+});
+
+app.post('/cases/:id/exhibits/:exhibitId/status', requirePerm('lawyer'), (req, res) => {
+  const cases = readJSON(CASES_FILE);
+  const idx = cases.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  const exhibit = (cases[idx].exhibits||[]).find(e=>e.id===req.params.exhibitId);
+  if (!exhibit) return res.status(404).send('Exhibit not found.');
+  const { status } = req.body;
+  if (!['admitted','rejected','pending'].includes(status)) return res.status(400).send('Invalid status.');
+  exhibit.status = status;
+  exhibit.statusSetBy = req.session.user.username;
+  exhibit.statusSetAt = new Date().toISOString();
+  cases[idx].updatedAt = new Date().toISOString();
+  writeJSON(CASES_FILE, cases);
+  logActivity('exhibit_updated', `Exhibit ${exhibit.letter} in ${cases[idx].caseNumber} marked ${status}`, req.session.user.username);
+  return res.redirect(`/cases/${req.params.id}`);
+});
+
+app.post('/cases/:id/exhibits/:exhibitId/describe', requirePerm('clerk'), (req, res) => {
+  const cases = readJSON(CASES_FILE);
+  const idx = cases.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  const exhibit = (cases[idx].exhibits||[]).find(e=>e.id===req.params.exhibitId);
+  if (!exhibit) return res.status(404).send('Exhibit not found.');
+  exhibit.description = (req.body.description||'').trim();
+  cases[idx].updatedAt = new Date().toISOString();
+  writeJSON(CASES_FILE, cases);
+  return res.redirect(`/cases/${req.params.id}`);
+});
+
+app.post('/cases/:id/exhibits/:exhibitId/delete', requirePerm('ag'), (req, res) => {
+  const cases = readJSON(CASES_FILE);
+  const idx = cases.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  cases[idx].exhibits = (cases[idx].exhibits||[]).filter(e=>e.id!==req.params.exhibitId);
+  cases[idx].updatedAt = new Date().toISOString();
+  writeJSON(CASES_FILE, cases);
+  return res.redirect(`/cases/${req.params.id}`);
+});
+
+app.post('/cases/:id/courtdocs/:docId/delete', requirePerm('ag'), (req, res) => {
+  const cases = readJSON(CASES_FILE);
+  const idx = cases.findIndex(x=>x.id===req.params.id);
+  if (idx===-1) return res.status(404).send('Not found.');
+  cases[idx].courtDocuments = (cases[idx].courtDocuments||[]).filter(d=>d.id!==req.params.docId);
   cases[idx].updatedAt = new Date().toISOString();
   writeJSON(CASES_FILE, cases);
   return res.redirect(`/cases/${req.params.id}`);
