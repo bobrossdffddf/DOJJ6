@@ -1,5 +1,19 @@
 [
   {
+    "id": "3b4063b0bf8203ff",
+    "type": "warrant_deleted",
+    "description": "Warrant request deleted by justawacko_",
+    "user": "justawacko_",
+    "timestamp": "2026-03-27T15:52:44.607Z"
+  },
+  {
+    "id": "efd56d3f5007bc58",
+    "type": "warrant_deleted",
+    "description": "Warrant request deleted by justawacko_",
+    "user": "justawacko_",
+    "timestamp": "2026-03-27T15:52:42.643Z"
+  },
+  {
     "id": "80c91bb8e179900b",
     "type": "exhibit_updated",
     "description": "Exhibit A in DOJ-2026-0001 marked admitted",

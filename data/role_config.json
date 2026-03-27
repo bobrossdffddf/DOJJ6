@@ -1,14 +1,7 @@
 {
   "ag": [
     "attorney general",
-    "ag",
-    "chief justice",
-    "chief",
-    "director",
-    "superintendent",
-    "secretary of state",
-    "governor",
-    "administrator"
+    "ag"
   ],
   "lawyer": [
     "lawyer",
@@ -24,7 +17,9 @@
     "barrister",
     "litigation",
     "dda",
-    "assistant da"
+    "assistant da",
+    "bar",
+    "bar certified"
   ],
   "clerk": [
     "clerk",
@@ -36,6 +31,7 @@
     "admin assistant",
     "legal assistant",
     "law clerk",
-    "court clerk"
+    "court clerk",
+    "clerk of court certification"
   ]
 }
