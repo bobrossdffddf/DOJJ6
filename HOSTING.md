@@ -35,7 +35,7 @@ npm -v
 apt install -y git
 git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git /opt/doj-portal
 cd /opt/doj-portal
-npm install --production
+npm install --omit=dev
 ```
 
 Replace the GitHub URL with wherever you store this project. Alternatively, copy files directly using `scp` or an SFTP client.
@@ -285,7 +285,7 @@ ufw enable
 ```bash
 cd /opt/doj-portal
 git pull
-npm install --production
+npm install --omit=dev
 systemctl restart doj-portal
 ```
 

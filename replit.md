@@ -25,6 +25,8 @@ A Discord-authenticated web portal for the State of Texas Department of Justice.
 - **Global Search** — Search across cases, warrants, defendants, and file names
 - **Activity Log** — Recent actions logged across all modules
 - **Texas Penal Code** — 50+ pre-built charge list for quick selection
+- **Case Templates** — 10 one-click templates (DWI, Assault, Murder, Armed Robbery, etc.) that pre-fill type, grade, priority, charges, and a narrative starter on the New Case form
+- **Statute & Charge Library** — `/charges` page listing all charges grouped by category with live search, one-click copy, and a "Use in New Case" button that pre-fills the charge on the form
 
 ## Discord Bot Commands
 

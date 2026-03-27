@@ -627,6 +627,260 @@ const COMMON_CHARGES = [
   "Criminal Solicitation (TPC § 15.03)",
 ];
 
+// ── Charge categories (for Statute Library) ───────────────────────────────────
+const CHARGE_CATEGORIES = [
+  {
+    name: "Homicide",
+    code: "TPC Title 5",
+    charges: [
+      "Murder (TPC § 19.02)",
+      "Capital Murder (TPC § 19.03)",
+      "Manslaughter (TPC § 19.04)",
+      "Criminally Negligent Homicide (TPC § 19.05)",
+    ],
+  },
+  {
+    name: "Assault & Threats",
+    code: "TPC Title 5",
+    charges: [
+      "Assault (TPC § 22.01)",
+      "Aggravated Assault (TPC § 22.02)",
+      "Deadly Conduct (TPC § 22.05)",
+      "Terroristic Threat (TPC § 22.07)",
+      "Sexual Assault (TPC § 22.011)",
+      "Aggravated Sexual Assault (TPC § 22.021)",
+    ],
+  },
+  {
+    name: "Kidnapping & Restraint",
+    code: "TPC Title 4",
+    charges: [
+      "Kidnapping (TPC § 20.03)",
+      "Aggravated Kidnapping (TPC § 20.04)",
+      "Unlawful Restraint (TPC § 20.02)",
+    ],
+  },
+  {
+    name: "Robbery",
+    code: "TPC Title 7",
+    charges: [
+      "Robbery (TPC § 29.02)",
+      "Aggravated Robbery (TPC § 29.03)",
+    ],
+  },
+  {
+    name: "Property Crimes",
+    code: "TPC Title 7",
+    charges: [
+      "Theft (TPC § 31.03)",
+      "Burglary of a Habitation (TPC § 30.02)",
+      "Burglary of a Building (TPC § 30.02)",
+      "Burglary of a Vehicle (TPC § 30.04)",
+      "Criminal Trespass (TPC § 30.05)",
+      "Unauthorized Use of Motor Vehicle (TPC § 31.07)",
+      "Arson (TPC § 28.02)",
+      "Criminal Mischief (TPC § 28.03)",
+    ],
+  },
+  {
+    name: "Drug Offenses",
+    code: "Texas Health & Safety Code",
+    charges: [
+      "Possession of Controlled Substance (THSC § 481.115)",
+      "Manufacture/Delivery of Controlled Substance (THSC § 481.112)",
+      "Possession of Marijuana (THSC § 481.121)",
+      "Delivery of Marijuana (THSC § 481.120)",
+      "Possession of Drug Paraphernalia (THSC § 481.125)",
+    ],
+  },
+  {
+    name: "Weapons",
+    code: "TPC Title 10",
+    charges: [
+      "Unlawful Carrying of Weapon (TPC § 46.02)",
+      "Felon in Possession of Firearm (TPC § 46.04)",
+      "Unlawful Transfer of Firearm (TPC § 46.06)",
+      "Prohibited Weapons (TPC § 46.05)",
+    ],
+  },
+  {
+    name: "DWI & Traffic",
+    code: "TPC / Transportation Code",
+    charges: [
+      "Driving While Intoxicated (TPC § 49.04)",
+      "DWI with Child Passenger (TPC § 49.045)",
+      "Intoxication Assault (TPC § 49.07)",
+      "Intoxication Manslaughter (TPC § 49.08)",
+      "Evading Arrest — Vehicle (TPC § 38.04)",
+      "Evading Arrest — Foot (TPC § 38.04)",
+      "Reckless Driving (Tex. Transp. Code § 545.401)",
+      "Street Racing (Tex. Transp. Code § 545.420)",
+      "Driving While License Invalid (Tex. Transp. Code § 521.457)",
+    ],
+  },
+  {
+    name: "Obstruction of Justice",
+    code: "TPC",
+    charges: [
+      "Resisting Arrest (TPC § 38.03)",
+      "Tampering with Evidence (TPC § 37.09)",
+      "Tampering with Witness (TPC § 36.05)",
+      "Perjury (TPC § 37.02)",
+      "False Report to Police (TPC § 37.08)",
+      "Retaliation (TPC § 36.06)",
+    ],
+  },
+  {
+    name: "Financial Crimes",
+    code: "TPC",
+    charges: [
+      "Money Laundering (TPC § 34.02)",
+      "Bribery (TPC § 36.02)",
+      "Forgery (TPC § 32.21)",
+      "Fraud (TPC § 32.46)",
+      "Identity Theft (TPC § 32.51)",
+      "Credit Card Abuse (TPC § 32.31)",
+    ],
+  },
+  {
+    name: "Public Order",
+    code: "TPC",
+    charges: [
+      "Public Intoxication (TPC § 49.02)",
+      "Disorderly Conduct (TPC § 42.01)",
+      "Riot (TPC § 42.02)",
+      "Prostitution (TPC § 43.02)",
+      "Gambling Promotion (TPC § 47.03)",
+    ],
+  },
+  {
+    name: "Organized Crime",
+    code: "TPC",
+    charges: [
+      "Engaging in Organized Criminal Activity (TPC § 71.02)",
+      "Conspiracy (TPC § 15.02)",
+      "Criminal Solicitation (TPC § 15.03)",
+    ],
+  },
+];
+
+// ── Case templates ────────────────────────────────────────────────────────────
+const CASE_TEMPLATES = [
+  {
+    id: "dwi",
+    label: "DWI / DUI",
+    icon: "🚗",
+    type: "traffic",
+    caseGrade: "Class B Misdemeanor",
+    priority: "medium",
+    charges: ["Driving While Intoxicated (TPC § 49.04)"],
+    titleHint: "State v. [Defendant] — DWI",
+    notes: "Defendant was observed operating a motor vehicle while intoxicated. Field sobriety tests administered. BAC reading: ___.",
+  },
+  {
+    id: "assault",
+    label: "Assault",
+    icon: "⚠️",
+    type: "criminal",
+    caseGrade: "Class A Misdemeanor",
+    priority: "medium",
+    charges: ["Assault (TPC § 22.01)"],
+    titleHint: "State v. [Defendant] — Assault",
+    notes: "Defendant intentionally, knowingly, or recklessly caused bodily injury to the complainant. Incident details: ___.",
+  },
+  {
+    id: "agg-assault",
+    label: "Aggravated Assault",
+    icon: "🔴",
+    type: "criminal",
+    caseGrade: "2nd Degree Felony",
+    priority: "high",
+    charges: ["Aggravated Assault (TPC § 22.02)"],
+    titleHint: "State v. [Defendant] — Aggravated Assault",
+    notes: "Defendant caused serious bodily injury or used or exhibited a deadly weapon during the assault. Weapon/injuries: ___.",
+  },
+  {
+    id: "armed-robbery",
+    label: "Armed Robbery",
+    icon: "🔫",
+    type: "criminal",
+    caseGrade: "1st Degree Felony",
+    priority: "high",
+    charges: [
+      "Aggravated Robbery (TPC § 29.03)",
+      "Unlawful Carrying of Weapon (TPC § 46.02)",
+    ],
+    titleHint: "State v. [Defendant] — Armed Robbery",
+    notes: "Defendant committed robbery while using or exhibiting a deadly weapon. Location: ___. Property taken: ___.",
+  },
+  {
+    id: "drug-possession",
+    label: "Drug Possession",
+    icon: "💊",
+    type: "criminal",
+    caseGrade: "State Jail Felony",
+    priority: "medium",
+    charges: ["Possession of Controlled Substance (THSC § 481.115)"],
+    titleHint: "State v. [Defendant] — Possession of Controlled Substance",
+    notes: "Defendant was found in possession of a controlled substance. Substance: ___. Amount: ___. Location found: ___.",
+  },
+  {
+    id: "murder",
+    label: "Murder",
+    icon: "☠️",
+    type: "criminal",
+    caseGrade: "1st Degree Felony",
+    priority: "critical",
+    charges: ["Murder (TPC § 19.02)"],
+    titleHint: "State v. [Defendant] — Murder",
+    notes: "Defendant intentionally or knowingly caused the death of the decedent. Victim: ___. Manner: ___. Scene: ___.",
+  },
+  {
+    id: "reckless-driving",
+    label: "Reckless Driving",
+    icon: "🏎️",
+    type: "traffic",
+    caseGrade: "Class B Misdemeanor",
+    priority: "low",
+    charges: ["Reckless Driving (Tex. Transp. Code § 545.401)"],
+    titleHint: "State v. [Defendant] — Reckless Driving",
+    notes: "Defendant operated a vehicle with willful or wanton disregard for safety of persons or property. Location: ___.",
+  },
+  {
+    id: "evading",
+    label: "Evading Arrest",
+    icon: "🏃",
+    type: "criminal",
+    caseGrade: "State Jail Felony",
+    priority: "medium",
+    charges: ["Evading Arrest — Vehicle (TPC § 38.04)"],
+    titleHint: "State v. [Defendant] — Evading Arrest",
+    notes: "Defendant intentionally fled from a person they knew was a peace officer attempting a lawful arrest. Details: ___.",
+  },
+  {
+    id: "burglary",
+    label: "Burglary",
+    icon: "🏠",
+    type: "criminal",
+    caseGrade: "2nd Degree Felony",
+    priority: "medium",
+    charges: ["Burglary of a Habitation (TPC § 30.02)"],
+    titleHint: "State v. [Defendant] — Burglary",
+    notes: "Defendant entered a habitation without consent and committed or attempted to commit a felony, theft, or assault. Address: ___.",
+  },
+  {
+    id: "disorderly",
+    label: "Disorderly Conduct",
+    icon: "📢",
+    type: "criminal",
+    caseGrade: "Class C Misdemeanor",
+    priority: "low",
+    charges: ["Disorderly Conduct (TPC § 42.01)", "Public Intoxication (TPC § 49.02)"],
+    titleHint: "State v. [Defendant] — Disorderly Conduct",
+    notes: "Defendant engaged in disorderly conduct in a public place. Specific conduct: ___. Location: ___.",
+  },
+];
+
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 function authUrl(state) {
   return `https://discord.com/api/oauth2/authorize?${new URLSearchParams({
@@ -699,6 +953,7 @@ function layout({ title, body, user, page = "", req = null }) {
     <a class="subnav-link${page === "dashboard" ? " active" : ""}" href="/dashboard">Dashboard</a>
     ${canWarrants ? `<a class="subnav-link${page === "warrants" ? " active" : ""}" href="/warrants">Warrants</a>` : ""}
     ${canCases ? `<a class="subnav-link${page === "cases" ? " active" : ""}" href="/cases">Cases</a>` : ""}
+    ${canCases ? `<a class="subnav-link${page === "charges" ? " active" : ""}" href="/charges">Statute Library</a>` : ""}
     ${canDefendants ? `<a class="subnav-link${page === "defendants" ? " active" : ""}" href="/defendants">Defendants</a>` : ""}
     ${canSubpoenas ? `<a class="subnav-link${page === "subpoenas" ? " active" : ""}" href="/subpoenas">Subpoenas</a>` : ""}
     ${canDocs ? `<a class="subnav-link${page === "channels" ? " active" : ""}" href="/channels">Documents</a>` : ""}
@@ -1121,6 +1376,91 @@ function activityIcon(type) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// STATUTE / CHARGE LIBRARY
+// ════════════════════════════════════════════════════════════════════════════
+
+app.get("/charges", requirePerm("clerk"), (req, res) => {
+  const categorySections = CHARGE_CATEGORIES.map((cat) => {
+    const rows = cat.charges
+      .map(
+        (charge) => `
+      <div class="charge-row" data-charge="${escapeHtml(charge.toLowerCase())}">
+        <span class="charge-name">${escapeHtml(charge)}</span>
+        <div class="charge-actions">
+          <button type="button" class="btn-sm" onclick="copyCharge(this,'${escapeHtml(charge).replace(/'/g, "\\'")}')">Copy</button>
+          <a class="btn-sm btn-primary" href="/cases/new?charge=${encodeURIComponent(charge)}" style="font-size:0.75rem;padding:0.25rem 0.6rem">Use in New Case</a>
+        </div>
+      </div>`,
+      )
+      .join("");
+    return `
+    <div class="statute-category" data-cat="${escapeHtml(cat.name.toLowerCase())}">
+      <div class="statute-cat-header">
+        <span class="statute-cat-name">${escapeHtml(cat.name)}</span>
+        <span class="statute-cat-code">${escapeHtml(cat.code)}</span>
+      </div>
+      <div class="charge-list">${rows}</div>
+    </div>`;
+  }).join("");
+
+  const body = `
+  <div class="page-header">
+    <h1 class="page-title">Statute &amp; Charge Library</h1>
+    <a class="btn-primary" href="/cases/new">+ New Case</a>
+  </div>
+  <div class="card" style="margin-bottom:1rem">
+    <input class="input" id="chargeSearch" placeholder="Search charges or statutes…" oninput="filterCharges(this.value)" autofocus style="max-width:420px"/>
+    <p class="field-hint" style="margin-top:0.4rem">Click <strong>Use in New Case</strong> to open the new case form with that charge pre-filled. Click <strong>Copy</strong> to copy the charge text.</p>
+  </div>
+  <div id="statuteList">${categorySections}</div>
+  <div id="noResults" style="display:none;text-align:center;padding:2rem;color:#6b7280">No charges match your search.</div>
+  <style>
+    .statute-category{background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:1rem;overflow:hidden}
+    .statute-cat-header{display:flex;align-items:center;justify-content:space-between;padding:0.6rem 1rem;background:#f9fafb;border-bottom:1px solid #e5e7eb}
+    .statute-cat-name{font-weight:600;font-size:0.9rem;color:#111827}
+    .statute-cat-code{font-size:0.75rem;color:#6b7280;font-style:italic}
+    .charge-list{padding:0.25rem 0}
+    .charge-row{display:flex;align-items:center;justify-content:space-between;padding:0.45rem 1rem;gap:1rem;border-bottom:1px solid #f3f4f6}
+    .charge-row:last-child{border-bottom:none}
+    .charge-row:hover{background:#f9fafb}
+    .charge-name{font-size:0.85rem;color:#374151;flex:1}
+    .charge-actions{display:flex;gap:0.35rem;flex-shrink:0}
+  </style>
+  <script>
+    function filterCharges(q){
+      q=q.toLowerCase().trim();
+      let anyVisible=false;
+      document.querySelectorAll('.statute-category').forEach(cat=>{
+        let catVisible=false;
+        cat.querySelectorAll('.charge-row').forEach(row=>{
+          const match=!q||row.dataset.charge.includes(q)||cat.dataset.cat.includes(q);
+          row.style.display=match?'':'none';
+          if(match)catVisible=true;
+        });
+        cat.style.display=catVisible?'':'none';
+        if(catVisible)anyVisible=true;
+      });
+      document.getElementById('noResults').style.display=anyVisible?'none':'block';
+    }
+    function copyCharge(btn,text){
+      navigator.clipboard.writeText(text).then(()=>{
+        const orig=btn.textContent;btn.textContent='Copied!';
+        setTimeout(()=>{btn.textContent=orig;},1500);
+      });
+    }
+  </script>`;
+  return res.send(
+    layout({
+      req,
+      title: "Statute Library — DOJ",
+      body,
+      user: req.session.user,
+      page: "charges",
+    }),
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // CASES
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1228,20 +1568,34 @@ app.get("/cases/new", requirePerm("clerk"), (req, res) => {
     (g) => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`,
   ).join("");
 
+  const preCharge = req.query.charge ? escapeHtml(req.query.charge) : "";
+
+  const templateCards = CASE_TEMPLATES.map(
+    (t) =>
+      `<button type="button" class="template-card" data-tpl="${escapeHtml(Buffer.from(JSON.stringify(t)).toString("base64"))}" onclick="applyTemplate(this)" title="Apply ${escapeHtml(t.label)} template">
+        <span class="template-icon">${t.icon}</span>
+        <span class="template-label">${escapeHtml(t.label)}</span>
+      </button>`,
+  ).join("");
+
   const body = `
   <div class="page-header"><a class="back-link" href="/cases">← Back to cases</a><h1 class="page-title">New Case</h1></div>
+  <div class="card" style="margin-bottom:1rem">
+    <div class="section-label" style="margin-bottom:0.6rem">Quick Templates <span style="font-weight:400;color:#6b7280;font-size:0.8rem">— click to pre-fill the form</span></div>
+    <div class="template-grid">${templateCards}</div>
+  </div>
   <div class="card">
-    <form method="post" action="/cases">
+    <form method="post" action="/cases" id="caseForm">
       <div class="section-label">Basic Information</div>
       <div class="form-grid">
-        <div class="form-group"><label>Case Title <span class="req">*</span></label><input class="input" name="title" required placeholder="Brief description of the case"/></div>
-        <div class="form-group"><label>Defendant / Subject <span class="req">*</span></label><input class="input" name="subject" required placeholder="Full legal name"/></div>
-        <div class="form-group"><label>Case Type <span class="req">*</span></label><select class="input" name="type" required><option value="criminal">Criminal</option><option value="traffic">Traffic</option><option value="civil">Civil</option><option value="internal affairs">Internal Affairs</option></select></div>
-        <div class="form-group"><label>Offense Grade</label><select class="input" name="caseGrade"><option value="">— Select —</option>${gradeOptions}</select></div>
-        <div class="form-group"><label>Priority</label><select class="input" name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
-        <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" required><option value="">— Select County —</option>${countyOptions}</select></div>
-        <div class="form-group"><label>Court Type</label><select class="input" name="courtType"><option value="">— Select Court —</option>${courtOptions}</select></div>
-        <div class="form-group"><label>Incident Location / Address</label><input class="input" name="location" placeholder="Street address, city, county"/></div>
+        <div class="form-group"><label>Case Title <span class="req">*</span></label><input class="input" name="title" id="f_title" required placeholder="Brief description of the case"/></div>
+        <div class="form-group"><label>Defendant / Subject <span class="req">*</span></label><input class="input" name="subject" id="f_subject" required placeholder="Full legal name"/></div>
+        <div class="form-group"><label>Case Type <span class="req">*</span></label><select class="input" name="type" id="f_type" required><option value="criminal">Criminal</option><option value="traffic">Traffic</option><option value="civil">Civil</option><option value="internal affairs">Internal Affairs</option></select></div>
+        <div class="form-group"><label>Offense Grade</label><select class="input" name="caseGrade" id="f_caseGrade"><option value="">— Select —</option>${gradeOptions}</select></div>
+        <div class="form-group"><label>Priority</label><select class="input" name="priority" id="f_priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+        <div class="form-group"><label>County <span class="req">*</span></label><select class="input" name="county" id="f_county" required><option value="">— Select County —</option>${countyOptions}</select></div>
+        <div class="form-group"><label>Court Type</label><select class="input" name="courtType" id="f_courtType"><option value="">— Select Court —</option>${courtOptions}</select></div>
+        <div class="form-group"><label>Incident Location / Address</label><input class="input" name="location" id="f_location" placeholder="Street address, city, county"/></div>
       </div>
       <div class="section-label">Parties</div>
       <div class="form-grid">
@@ -1259,16 +1613,41 @@ app.get("/cases/new", requirePerm("clerk"), (req, res) => {
       </div>
       <div class="section-label">Charges</div>
       <div class="form-group">
-        <p class="field-hint">Pick from the Texas Penal Code list or type custom charges comma-separated.</p>
+        <p class="field-hint">Pick from the Texas Penal Code list, type custom charges, or <a href="/charges" target="_blank" style="color:#4f46e5">browse the full Statute Library ↗</a>.</p>
         <select class="input" id="chargeSelect" onchange="addCharge(this)"><option value="">— Add a charge —</option>${chargeOptions}</select>
-        <input class="input" name="chargesRaw" id="chargesRaw" placeholder="Charges appear here (comma-separated)" style="margin-top:0.5rem"/>
+        <input class="input" name="chargesRaw" id="chargesRaw" value="${preCharge}" placeholder="Charges appear here (comma-separated)" style="margin-top:0.5rem"/>
       </div>
       <div class="section-label">Narrative</div>
-      <div class="form-group"><label>Case Summary / Probable Cause</label><textarea class="input" name="notes" rows="5" placeholder="Describe the incident, evidence, probable cause, relevant details…"></textarea></div>
+      <div class="form-group"><label>Case Summary / Probable Cause</label><textarea class="input" name="notes" id="f_notes" rows="5" placeholder="Describe the incident, evidence, probable cause, relevant details…"></textarea></div>
       <div class="form-actions"><button class="btn-primary" type="submit">Create Case</button><a class="btn-sm" href="/cases">Cancel</a></div>
     </form>
   </div>
-  <script>function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}</script>`;
+  <style>
+    .template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:0.5rem}
+    .template-card{display:flex;flex-direction:column;align-items:center;gap:0.3rem;padding:0.65rem 0.5rem;border:1.5px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s;font-size:0.8rem;font-weight:500;color:#374151;line-height:1.2}
+    .template-card:hover{border-color:#4f46e5;background:#f5f3ff;color:#4f46e5}
+    .template-icon{font-size:1.4rem;line-height:1}
+    .template-label{text-align:center}
+  </style>
+  <script>
+    function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}
+    function setSelect(id,val){const s=document.getElementById(id);if(!s)return;for(const o of s.options){if(o.value===val){o.selected=true;return;}}s.options[0].selected=true;}
+    function applyTemplate(btn){
+      const t=JSON.parse(atob(btn.dataset.tpl));
+      const titleEl=document.getElementById('f_title');
+      if(titleEl&&!titleEl.value)titleEl.placeholder=t.titleHint||'';
+      setSelect('f_type',t.type||'criminal');
+      setSelect('f_caseGrade',t.caseGrade||'');
+      setSelect('f_priority',t.priority||'medium');
+      const cr=document.getElementById('chargesRaw');
+      if(cr)cr.value=(t.charges||[]).join(', ');
+      const notesEl=document.getElementById('f_notes');
+      if(notesEl&&!notesEl.value)notesEl.value=t.notes||'';
+      document.querySelectorAll('.template-card').forEach(b=>b.style.borderColor='');
+      btn.style.borderColor='#4f46e5';
+      document.getElementById('caseForm').scrollIntoView({behavior:'smooth'});
+    }
+  </script>`;
   return res.send(
     layout({
       req,

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js"
+    "check": "node --check server.js",
+    "restart": "npm install --omit=dev && node server.js"
   },
   "engines": {
     "node": ">=18"
