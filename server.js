@@ -561,8 +561,6 @@ const COMMON_CHARGES = [
   "Assault (TPC § 22.01)",
   "Aggravated Assault (TPC § 22.02)",
   "Deadly Conduct (TPC § 22.05)",
-  "Terroristic Threat (TPC § 22.07)",
-  "Sexual Assault (TPC § 22.011)",
   "Aggravated Sexual Assault (TPC § 22.021)",
   // Kidnapping - Title 4
   "Kidnapping (TPC § 20.03)",
@@ -580,12 +578,6 @@ const COMMON_CHARGES = [
   "Unauthorized Use of Motor Vehicle (TPC § 31.07)",
   "Arson (TPC § 28.02)",
   "Criminal Mischief (TPC § 28.03)",
-  // Drug offenses - Texas Health & Safety Code
-  "Possession of Controlled Substance (THSC § 481.115)",
-  "Manufacture/Delivery of Controlled Substance (THSC § 481.112)",
-  "Possession of Marijuana (THSC § 481.121)",
-  "Delivery of Marijuana (THSC § 481.120)",
-  "Possession of Drug Paraphernalia (THSC § 481.125)",
   // Weapons - Title 10
   "Unlawful Carrying of Weapon (TPC § 46.02)",
   "Felon in Possession of Firearm (TPC § 46.04)",
@@ -619,7 +611,6 @@ const COMMON_CHARGES = [
   "Public Intoxication (TPC § 49.02)",
   "Disorderly Conduct (TPC § 42.01)",
   "Riot (TPC § 42.02)",
-  "Prostitution (TPC § 43.02)",
   "Gambling Promotion (TPC § 47.03)",
   // Organized crime
   "Engaging in Organized Criminal Activity (TPC § 71.02)",
@@ -646,8 +637,6 @@ const CHARGE_CATEGORIES = [
       "Assault (TPC § 22.01)",
       "Aggravated Assault (TPC § 22.02)",
       "Deadly Conduct (TPC § 22.05)",
-      "Terroristic Threat (TPC § 22.07)",
-      "Sexual Assault (TPC § 22.011)",
       "Aggravated Sexual Assault (TPC § 22.021)",
     ],
   },
@@ -680,17 +669,6 @@ const CHARGE_CATEGORIES = [
       "Unauthorized Use of Motor Vehicle (TPC § 31.07)",
       "Arson (TPC § 28.02)",
       "Criminal Mischief (TPC § 28.03)",
-    ],
-  },
-  {
-    name: "Drug Offenses",
-    code: "Texas Health & Safety Code",
-    charges: [
-      "Possession of Controlled Substance (THSC § 481.115)",
-      "Manufacture/Delivery of Controlled Substance (THSC § 481.112)",
-      "Possession of Marijuana (THSC § 481.121)",
-      "Delivery of Marijuana (THSC § 481.120)",
-      "Possession of Drug Paraphernalia (THSC § 481.125)",
     ],
   },
   {
@@ -749,7 +727,6 @@ const CHARGE_CATEGORIES = [
       "Public Intoxication (TPC § 49.02)",
       "Disorderly Conduct (TPC § 42.01)",
       "Riot (TPC § 42.02)",
-      "Prostitution (TPC § 43.02)",
       "Gambling Promotion (TPC § 47.03)",
     ],
   },
@@ -769,7 +746,6 @@ const CASE_TEMPLATES = [
   {
     id: "dwi",
     label: "DWI / DUI",
-    icon: "🚗",
     type: "traffic",
     caseGrade: "Class B Misdemeanor",
     priority: "medium",
@@ -780,7 +756,6 @@ const CASE_TEMPLATES = [
   {
     id: "assault",
     label: "Assault",
-    icon: "⚠️",
     type: "criminal",
     caseGrade: "Class A Misdemeanor",
     priority: "medium",
@@ -791,7 +766,6 @@ const CASE_TEMPLATES = [
   {
     id: "agg-assault",
     label: "Aggravated Assault",
-    icon: "🔴",
     type: "criminal",
     caseGrade: "2nd Degree Felony",
     priority: "high",
@@ -802,7 +776,6 @@ const CASE_TEMPLATES = [
   {
     id: "armed-robbery",
     label: "Armed Robbery",
-    icon: "🔫",
     type: "criminal",
     caseGrade: "1st Degree Felony",
     priority: "high",
@@ -814,20 +787,8 @@ const CASE_TEMPLATES = [
     notes: "Defendant committed robbery while using or exhibiting a deadly weapon. Location: ___. Property taken: ___.",
   },
   {
-    id: "drug-possession",
-    label: "Drug Possession",
-    icon: "💊",
-    type: "criminal",
-    caseGrade: "State Jail Felony",
-    priority: "medium",
-    charges: ["Possession of Controlled Substance (THSC § 481.115)"],
-    titleHint: "State v. [Defendant] — Possession of Controlled Substance",
-    notes: "Defendant was found in possession of a controlled substance. Substance: ___. Amount: ___. Location found: ___.",
-  },
-  {
     id: "murder",
     label: "Murder",
-    icon: "☠️",
     type: "criminal",
     caseGrade: "1st Degree Felony",
     priority: "critical",
@@ -838,7 +799,6 @@ const CASE_TEMPLATES = [
   {
     id: "reckless-driving",
     label: "Reckless Driving",
-    icon: "🏎️",
     type: "traffic",
     caseGrade: "Class B Misdemeanor",
     priority: "low",
@@ -849,7 +809,6 @@ const CASE_TEMPLATES = [
   {
     id: "evading",
     label: "Evading Arrest",
-    icon: "🏃",
     type: "criminal",
     caseGrade: "State Jail Felony",
     priority: "medium",
@@ -860,7 +819,6 @@ const CASE_TEMPLATES = [
   {
     id: "burglary",
     label: "Burglary",
-    icon: "🏠",
     type: "criminal",
     caseGrade: "2nd Degree Felony",
     priority: "medium",
@@ -871,7 +829,6 @@ const CASE_TEMPLATES = [
   {
     id: "disorderly",
     label: "Disorderly Conduct",
-    icon: "📢",
     type: "criminal",
     caseGrade: "Class C Misdemeanor",
     priority: "low",
@@ -1573,8 +1530,8 @@ app.get("/cases/new", requirePerm("clerk"), (req, res) => {
   const templateCards = CASE_TEMPLATES.map(
     (t) =>
       `<button type="button" class="template-card" data-tpl="${escapeHtml(Buffer.from(JSON.stringify(t)).toString("base64"))}" onclick="applyTemplate(this)" title="Apply ${escapeHtml(t.label)} template">
-        <span class="template-icon">${t.icon}</span>
         <span class="template-label">${escapeHtml(t.label)}</span>
+        <span class="template-grade">${escapeHtml(t.caseGrade)}</span>
       </button>`,
   ).join("");
 
@@ -1623,11 +1580,12 @@ app.get("/cases/new", requirePerm("clerk"), (req, res) => {
     </form>
   </div>
   <style>
-    .template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:0.5rem}
-    .template-card{display:flex;flex-direction:column;align-items:center;gap:0.3rem;padding:0.65rem 0.5rem;border:1.5px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s;font-size:0.8rem;font-weight:500;color:#374151;line-height:1.2}
-    .template-card:hover{border-color:#4f46e5;background:#f5f3ff;color:#4f46e5}
-    .template-icon{font-size:1.4rem;line-height:1}
-    .template-label{text-align:center}
+    .template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.5rem}
+    .template-card{display:flex;flex-direction:column;align-items:flex-start;gap:0.2rem;padding:0.6rem 0.75rem;border:1.5px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s;text-align:left;width:100%}
+    .template-card:hover{border-color:#4f46e5;background:#f5f3ff}
+    .template-card:hover .template-label{color:#4f46e5}
+    .template-label{font-size:0.82rem;font-weight:600;color:#111827;line-height:1.3}
+    .template-grade{font-size:0.72rem;color:#6b7280;font-weight:400}
   </style>
   <script>
     function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}

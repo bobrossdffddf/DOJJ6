@@ -7,7 +7,7 @@ const {
 } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 
 const OWNER_ID = '848356730256883744';
 
@@ -890,18 +890,28 @@ client.on(Events.MessageCreate, async message => {
 
   if (content === '$git restart') {
     await ownerDM(message, 'Pulling latest code and restarting the server...');
-    const { err, stdout, stderr } = await runCmd('git pull && npm install --production && systemctl restart doj-portal');
-    if (err) {
-      await message.author.send(`Restart failed:\n\`\`\`\n${(stderr || err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
+    const pull = await runExecFile('git', ['pull']);
+    if (pull.err) {
+      await message.author.send(`Restart failed (git pull):\n\`\`\`\n${(pull.stderr || pull.err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
+      return;
+    }
+    const install = await runExecFile('npm', ['install', '--omit=dev']);
+    if (install.err) {
+      await message.author.send(`Restart failed (npm install):\n\`\`\`\n${(install.stderr || install.err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
+      return;
+    }
+    const restart = await runExecFile('systemctl', ['restart', 'doj-portal']);
+    if (restart.err) {
+      await message.author.send(`Restart failed (systemctl):\n\`\`\`\n${(restart.stderr || restart.err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
     } else {
-      await message.author.send(`Done.\n\`\`\`\n${stdout.slice(0, 1800)}\n\`\`\``).catch(() => {});
+      await message.author.send(`Done. Server restarted.\n\`\`\`\n${pull.stdout.slice(0, 900)}\n${install.stdout.slice(0, 900)}\n\`\`\``).catch(() => {});
     }
     return;
   }
 
   if (content === '$git stash') {
     await ownerDM(message, 'Running git stash...');
-    const { err, stdout, stderr } = await runCmd('git stash');
+    const { err, stdout, stderr } = await runExecFile('git', ['stash']);
     if (err) {
       await message.author.send(`git stash failed:\n\`\`\`\n${(stderr || err.message).slice(0, 1800)}\n\`\`\``).catch(() => {});
     } else {
@@ -912,10 +922,10 @@ client.on(Events.MessageCreate, async message => {
 
   if (content === '$git v') {
     const [branch, log, status, gitver] = await Promise.all([
-      runCmd('git branch --show-current'),
-      runCmd('git log --oneline -5'),
-      runCmd('git status --short'),
-      runCmd('git --version')
+      runExecFile('git', ['branch', '--show-current']),
+      runExecFile('git', ['log', '--oneline', '-5']),
+      runExecFile('git', ['status', '--short']),
+      runExecFile('git', ['--version']),
     ]);
     const out = [
       `**${gitver.stdout}**`,
@@ -949,10 +959,10 @@ async function ownerDM(message, text) {
   }
 }
 
-function runCmd(cmd) {
+function runExecFile(bin, args) {
   return new Promise(resolve => {
-    exec(cmd, (err, stdout, stderr) => {
-      resolve({ err, stdout: stdout.trim(), stderr: stderr.trim() });
+    execFile(bin, args, { timeout: 60000 }, (err, stdout, stderr) => {
+      resolve({ err, stdout: (stdout || '').trim(), stderr: (stderr || '').trim() });
     });
   });
 }
