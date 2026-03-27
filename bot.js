@@ -18,6 +18,16 @@ const CASES_FILE         = path.join(DATA_DIR, 'cases.json');
 const WARRANTS_FILE      = path.join(DATA_DIR, 'warrants.json');
 const DEFENDANTS_FILE    = path.join(DATA_DIR, 'defendants.json');
 const BOT_CONFIG_FILE    = path.join(DATA_DIR, 'bot_config.json');
+const ROLE_CONFIG_FILE   = path.join(DATA_DIR, 'role_config.json');
+
+const DEFAULT_ROLE_KEYWORDS = {
+  ag:     ['attorney general', 'ag', 'chief justice', 'chief', 'director', 'superintendent', 'secretary of state', 'governor', 'administrator'],
+  lawyer: ['lawyer', 'attorney', 'ada', 'prosecutor', 'district attorney', 'judge', 'justice', 'counsel', 'solicitor', 'defender', 'barrister', 'litigation', 'dda', 'assistant da'],
+  clerk:  ['clerk', 'paralegal', 'secretary', 'filing', 'registrar', 'notary', 'admin assistant', 'legal assistant', 'law clerk', 'court clerk']
+};
+function loadRoleConfig() {
+  try { return JSON.parse(fs.readFileSync(ROLE_CONFIG_FILE, 'utf8')); } catch { return JSON.parse(JSON.stringify(DEFAULT_ROLE_KEYWORDS)); }
+}
 const WARRANT_PDFS_DIR   = path.join(DATA_DIR, 'uploads', 'warrant-pdfs');
 const WARRANT_REQ_DIR    = path.join(DATA_DIR, 'uploads', 'warrant-requests');
 
@@ -53,19 +63,12 @@ function toExhibitLetter(n) {
 }
 
 // ── Role check for /link and /unlink ─────────────────────────────────────────
-const LINK_ALLOWED_KEYWORDS = [
-  'clerk', 'paralegal', 'secretary', 'filing', 'registrar', 'notary',
-  'admin assistant', 'legal assistant', 'law clerk', 'court clerk',
-  'lawyer', 'attorney', 'ada', 'prosecutor', 'district attorney',
-  'judge', 'justice', 'counsel', 'solicitor', 'defender', 'barrister',
-  'dda', 'assistant da', 'attorney general', 'ag', 'chief justice',
-  'chief', 'director', 'superintendent', 'administrator', 'hr'
-];
-
 function canLinkCase(member) {
   if (!member) return false;
+  const cfg = loadRoleConfig();
+  const allKeywords = [...(cfg.ag||[]), ...(cfg.lawyer||[]), ...(cfg.clerk||[]), 'hr'];
   const roleNames = member.roles.cache.map(r => r.name.toLowerCase());
-  return roleNames.some(n => LINK_ALLOWED_KEYWORDS.some(k => n.includes(k)));
+  return roleNames.some(n => allKeywords.some(k => n.includes(k)));
 }
 
 const TOKEN     = process.env.DISCORD_BOT_TOKEN;
@@ -74,7 +77,7 @@ const GUILD_ID  = process.env.DISCORD_GUILD_ID;
 
 if (!TOKEN || !CLIENT_ID) {
   console.warn('[DOJ Bot] Missing DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID — bot will not start.');
-  module.exports = { refreshEmbeds: async () => {}, notifyCaseUpdate: async () => {} };
+  module.exports = { refreshEmbeds: async () => {}, notifyCaseUpdate: async () => {}, updateExhibitEmbed: async () => {} };
   return;
 }
 
@@ -504,7 +507,7 @@ async function handleThreadMessage(message) {
     const newExhibits = freshCase.exhibits.slice(-newExhibitCount);
 
     for (const exhibit of newExhibits) {
-      await message.channel.send({
+      const confirmMsg = await message.channel.send({
         embeds: [
           new EmbedBuilder()
             .setTitle(`Exhibit ${exhibit.letter} Cataloged — ${c.caseNumber}`)
@@ -521,7 +524,19 @@ async function handleThreadMessage(message) {
             .setFooter({ text: 'Exhibits can be admitted or rejected from the DOJ Portal', iconURL: DOJ_LOGO })
             .setTimestamp()
         ]
-      }).catch(() => {});
+      }).catch(() => null);
+
+      if (confirmMsg) {
+        const fc3 = readJSON(CASES_FILE);
+        const fc3Idx = fc3.findIndex(x => x.id === c.id);
+        if (fc3Idx !== -1) {
+          const exIdx = (fc3[fc3Idx].exhibits || []).findIndex(e => e.id === exhibit.id);
+          if (exIdx !== -1) {
+            fc3[fc3Idx].exhibits[exIdx].confirmMessageId = confirmMsg.id;
+            writeJSON(CASES_FILE, fc3);
+          }
+        }
+      }
     }
 
     // Update or create the pinned exhibit registry
@@ -942,8 +957,65 @@ function runCmd(cmd) {
   });
 }
 
+async function updateExhibitEmbed(caseId, exhibitId, newStatus) {
+  if (!ready) return;
+  try {
+    const cases = readJSON(CASES_FILE);
+    const c = cases.find(x => x.id === caseId);
+    if (!c || !c.discordLink) return;
+    const exhibit = (c.exhibits || []).find(e => e.id === exhibitId);
+    if (!exhibit || !exhibit.confirmMessageId) return;
+
+    const thread = await client.channels.fetch(c.discordLink.discoveryThreadId).catch(() => null);
+    if (!thread) return;
+    const msg = await thread.messages.fetch(exhibit.confirmMessageId).catch(() => null);
+    if (!msg) return;
+
+    const statusText = {
+      admitted: 'Admitted by the court',
+      rejected: 'Rejected by the court',
+      pending:  'Pending admission by the court'
+    }[newStatus] || 'Pending admission by the court';
+
+    const statusColor = {
+      admitted: 0x22c55e,
+      rejected: 0xef4444,
+      pending:  0x7c3aed
+    }[newStatus] || 0x7c3aed;
+
+    const setBy = exhibit.statusSetBy ? ` — ${exhibit.statusSetBy}` : '';
+
+    await msg.edit({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`Exhibit ${exhibit.letter} Cataloged — ${c.caseNumber}`)
+          .setColor(statusColor)
+          .setThumbnail(DOJ_LOGO)
+          .setDescription(
+            `**${exhibit.filename}** has been officially cataloged as **Exhibit ${exhibit.letter}** in case **${c.caseNumber}**.`
+          )
+          .addFields(
+            { name: 'File Type',    value: exhibit.type,            inline: true },
+            { name: 'Submitted By', value: exhibit.addedBy,         inline: true },
+            { name: 'Status',       value: statusText + setBy,      inline: true }
+          )
+          .setFooter({ text: 'Exhibits can be admitted or rejected from the DOJ Portal', iconURL: DOJ_LOGO })
+          .setTimestamp()
+      ]
+    });
+
+    const freshCase = readJSON(CASES_FILE).find(x => x.id === caseId);
+    if (freshCase?.discordLink?.exhibitRegistryMessageId) {
+      const regMsg = await thread.messages.fetch(freshCase.discordLink.exhibitRegistryMessageId).catch(() => null);
+      if (regMsg) await regMsg.edit({ embeds: [buildExhibitRegistryEmbed(freshCase)] }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[DOJ Bot] updateExhibitEmbed error:', err.message);
+  }
+}
+
 client.login(TOKEN).catch(err => {
   console.error('[DOJ Bot] Login failed:', err.message);
 });
 
-module.exports = { refreshEmbeds, notifyCaseUpdate };
+module.exports = { refreshEmbeds, notifyCaseUpdate, updateExhibitEmbed };

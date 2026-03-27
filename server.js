@@ -107,15 +107,25 @@ const wrReturnUpload = multer({ storage: wrReturnStorage, limits: { fileSize: 25
 
 const PERM = { citizen: 0, clerk: 1, lawyer: 2, ag: 3 };
 
-const ROLE_KEYWORDS = {
+const ROLE_CONFIG_FILE = path.join(DATA_DIR, 'role_config.json');
+const DEFAULT_ROLE_KEYWORDS = {
   ag:     ['attorney general', 'ag', 'chief justice', 'chief', 'director', 'superintendent', 'secretary of state', 'governor', 'administrator'],
   lawyer: ['lawyer', 'attorney', 'ada', 'prosecutor', 'district attorney', 'judge', 'justice', 'counsel', 'solicitor', 'defender', 'barrister', 'litigation', 'dda', 'assistant da'],
   clerk:  ['clerk', 'paralegal', 'secretary', 'filing', 'registrar', 'notary', 'admin assistant', 'legal assistant', 'law clerk', 'court clerk']
 };
+function loadRoleConfig() {
+  try { return JSON.parse(fs.readFileSync(ROLE_CONFIG_FILE, 'utf8')); } catch { return JSON.parse(JSON.stringify(DEFAULT_ROLE_KEYWORDS)); }
+}
+function saveRoleConfig(cfg) {
+  fs.writeFileSync(ROLE_CONFIG_FILE, JSON.stringify(cfg, null, 2));
+}
+if (!fs.existsSync(ROLE_CONFIG_FILE)) saveRoleConfig(DEFAULT_ROLE_KEYWORDS);
 
 function detectPermLevel(roleNames) {
+  const cfg = loadRoleConfig();
   const lower = roleNames.map(n => n.toLowerCase());
-  for (const [level, keywords] of Object.entries(ROLE_KEYWORDS)) {
+  for (const level of ['ag', 'lawyer', 'clerk']) {
+    const keywords = cfg[level] || DEFAULT_ROLE_KEYWORDS[level] || [];
     if (lower.some(n => keywords.some(k => n.includes(k)))) return level;
   }
   return 'citizen';
@@ -401,22 +411,33 @@ function requirePerm(level) {
         <p class="muted-text">If you believe this is wrong, contact your supervisor — your Discord role controls your access.</p>
         <a class="btn-primary" href="/dashboard">Return to Dashboard</a>
       </div>`;
-      return res.status(403).send(layout({ title: 'Access Denied — DOJ', body, user: req.session.user, page: '' }));
+      return res.status(403).send(layout({ req, title: 'Access Denied — DOJ', body, user: req.session.user, page: '' }));
     }
     next();
   };
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
-function layout({ title, body, user, page = '' }) {
-  const pl = user?.permLevel || 'citizen';
-  const canCases    = user && hasPerm(pl, 'clerk');
-  const canDocs     = user && hasPerm(pl, 'clerk');
-  const canWarrants = user && hasPerm(pl, 'citizen');
-  const canSubpoenas = user && hasPerm(pl, 'clerk');
-  const canDefendants = user && hasPerm(pl, 'clerk');
+function layout({ title, body, user, page = '', req = null }) {
+  const pl       = user?.permLevel || 'citizen';
+  const viewAsRole = req?.session?.viewAsRole || null;
+  const realPl   = req?.session?.originalPermLevel || pl;
 
+  const canCases          = user && hasPerm(pl, 'clerk');
+  const canDocs           = user && hasPerm(pl, 'clerk');
+  const canWarrants       = user && hasPerm(pl, 'citizen');
+  const canSubpoenas      = user && hasPerm(pl, 'clerk');
+  const canDefendants     = user && hasPerm(pl, 'clerk');
   const canManageRequests = user && hasPerm(pl, 'clerk');
+  const isRealAg          = user && hasPerm(realPl, 'ag');
+
+  const viewAsBanner = viewAsRole ? `
+  <div style="background:#fef3c7;border-bottom:2px solid #f59e0b;padding:0.5rem 1.5rem;display:flex;align-items:center;justify-content:space-between;font-size:0.875rem;gap:1rem;flex-wrap:wrap">
+    <span style="color:#92400e">Previewing portal as: <strong>${escapeHtml(PERM_LEVEL_LABEL[pl] || pl)}</strong> &mdash; your real role is <strong>${escapeHtml(PERM_LEVEL_LABEL[realPl] || realPl)}</strong>. Navigation and access reflect the preview role.</span>
+    <form method="post" action="/admin/view-as/reset" style="margin:0">
+      <button type="submit" style="background:#92400e;color:#fff;border:none;padding:0.25rem 0.8rem;border-radius:4px;cursor:pointer;font-size:0.8rem;white-space:nowrap">Exit Preview</button>
+    </form>
+  </div>` : '';
 
   const nav = user ? `
   <div class="subnav">
@@ -431,6 +452,7 @@ function layout({ title, body, user, page = '' }) {
     ${canManageRequests  ? `<a class="subnav-link${page==='warrant-requests'?' active':''}" href="/warrant-requests">Warrant Requests</a>` : ''}
     <a class="subnav-link${page==='search'?' active':''}" href="/search">Search</a>
     <a class="subnav-link${page==='bar-registry'?' active':''}" href="/bar-registry">Bar Registry</a>
+    ${isRealAg           ? `<a class="subnav-link${page==='admin'?' active':''}" href="/admin/roles">Admin</a>` : ''}
   </div>` : '';
 
   return `<!doctype html>
@@ -452,6 +474,7 @@ function layout({ title, body, user, page = '' }) {
         <a class="btn-sm" href="/logout">Sign out</a>` : ''}
     </div>
   </nav>
+  ${viewAsBanner}
   ${nav}
   <main class="container">
     ${body}
@@ -536,7 +559,7 @@ app.get('/', (req, res) => {
         : `<div class="alert-box">Discord credentials not configured. Set <code>DISCORD_CLIENT_ID</code> and <code>DISCORD_CLIENT_SECRET</code>.</div>`}
     </div>
   </div>`;
-  return res.send(layout({ title: 'Sign In — DOJ Portal', body, user: null }));
+  return res.send(layout({ req, title: 'Sign In — DOJ Portal', body, user: null }));
 });
 
 app.get('/auth/discord/callback', async (req, res) => {
@@ -660,7 +683,7 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     <div class="alert-box" style="margin-top:0">
       Your Discord role gives you <strong>Citizen</strong> access. If you are DOJ staff, ensure you have the correct role in the Discord server, then <a href="/refresh-roles" style="color:#92400e;text-decoration:underline">click here to refresh your access</a>.
     </div>`;
-    return res.send(layout({ title: 'Dashboard — DOJ', body, user, page: 'dashboard' }));
+    return res.send(layout({ req, title: 'Dashboard — DOJ', body, user, page: 'dashboard' }));
   }
 
   const activityRows = activity.map(a => `
@@ -738,7 +761,7 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     <div class="activity-list">${activityRows}</div>
   </div>`;
 
-  return res.send(layout({ title: 'Dashboard — DOJ', body, user, page: 'dashboard' }));
+  return res.send(layout({ req, title: 'Dashboard — DOJ', body, user, page: 'dashboard' }));
 });
 
 function activityIcon(type) {
@@ -801,7 +824,7 @@ app.get('/cases', requirePerm('clerk'), (req, res) => {
     <div class="table-rows">${rows}</div>
   </div>`;
 
-  return res.send(layout({ title: 'Cases — DOJ', body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ req, title: 'Cases — DOJ', body, user: req.session.user, page: 'cases' }));
 });
 
 app.get('/cases/new', requirePerm('clerk'), (req, res) => {
@@ -851,7 +874,7 @@ app.get('/cases/new', requirePerm('clerk'), (req, res) => {
     </form>
   </div>
   <script>function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}</script>`;
-  return res.send(layout({ title: 'New Case — DOJ', body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ req, title: 'New Case — DOJ', body, user: req.session.user, page: 'cases' }));
 });
 
 app.post('/cases', requirePerm('clerk'), (req, res) => {
@@ -1134,7 +1157,7 @@ app.get('/cases/:id', requirePerm('clerk'), (req, res) => {
       <button class="btn-primary" type="submit">Add Evidence</button>
     </form>` : ''}
   </div>`;
-  return res.send(layout({ title: `${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ req, title: `${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
 
 app.get('/cases/:id/edit', requirePerm('clerk'), (req, res) => {
@@ -1193,7 +1216,7 @@ app.get('/cases/:id/edit', requirePerm('clerk'), (req, res) => {
     </form>
   </div>
   <script>function addCharge(s){if(!s.value)return;const f=document.getElementById('chargesRaw');f.value=f.value.trim()?(f.value.trim()+', '+s.value):s.value;s.value='';}</script>`;
-  return res.send(layout({ title: `Edit ${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
+  return res.send(layout({ req, title: `Edit ${c.caseNumber} — DOJ`, body, user: req.session.user, page: 'cases' }));
 });
 
 app.post('/cases/:id/edit', requirePerm('clerk'), (req, res) => {
@@ -1288,6 +1311,7 @@ app.post('/cases/:id/exhibits/:exhibitId/status', requirePerm('lawyer'), (req, r
   cases[idx].updatedAt = new Date().toISOString();
   writeJSON(CASES_FILE, cases);
   logActivity('exhibit_updated', `Exhibit ${exhibit.letter} in ${cases[idx].caseNumber} marked ${status}`, req.session.user.username);
+  if (_bot && _bot.updateExhibitEmbed) _bot.updateExhibitEmbed(req.params.id, req.params.exhibitId, status).catch(() => {});
   return res.redirect(`/cases/${req.params.id}`);
 });
 
@@ -1368,7 +1392,7 @@ app.get('/warrants', requirePerm('citizen'), (req, res) => {
     <div class="table-header" style="grid-template-columns:1fr 1.5fr 1fr 1fr 1fr"><span>Warrant #</span><span>Subject</span><span>Type</span><span>Status</span><span>Issued</span></div>
     <div class="table-rows">${rows}</div>
   </div>`;
-  return res.send(layout({ title: 'Warrants — DOJ', body, user: req.session.user, page: 'warrants' }));
+  return res.send(layout({ req, title: 'Warrants — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
 app.get('/warrants/new', requirePerm('clerk'), (req, res) => {
@@ -1458,7 +1482,7 @@ app.get('/warrants/new', requirePerm('clerk'), (req, res) => {
   }
   updateWarrantFields();
   </script>`;
-  return res.send(layout({ title: 'Issue Warrant — DOJ', body, user: req.session.user, page: 'warrants' }));
+  return res.send(layout({ req, title: 'Issue Warrant — DOJ', body, user: req.session.user, page: 'warrants' }));
 });
 
 app.post('/warrants', requirePerm('clerk'), async (req, res) => {
@@ -1608,7 +1632,7 @@ app.get('/warrants/:id', requirePerm('citizen'), (req, res) => {
       ${w.returnFile ? `<dt>Return Document</dt><dd><a class="link" href="/warrant-return-files/${encodeURIComponent(w.returnFile)}" download="${escapeHtml(w.returnFileName||w.returnFile)}">📎 ${escapeHtml(w.returnFileName||w.returnFile)}</a></dd>` : '<dt>Return Document</dt><dd class="muted-text">No document attached</dd>'}
     </dl>
   </div>` : ''}`;
-  return res.send(layout({ title: `${w.warrantNumber} — DOJ`, body, user: req.session.user, page: 'warrants' }));
+  return res.send(layout({ req, title: `${w.warrantNumber} — DOJ`, body, user: req.session.user, page: 'warrants' }));
 });
 
 app.post('/warrants/:id/execute', requirePerm('lawyer'), wrReturnUpload.single('returnDoc'), (req, res) => {
@@ -1705,7 +1729,7 @@ app.get('/defendants', requirePerm('clerk'), (req, res) => {
     <div class="table-header" style="grid-template-columns:1.5fr 1fr 1.5fr 1fr"><span>Full Name</span><span>Date of Birth</span><span>Address</span><span>Added</span></div>
     <div class="table-rows">${rows}</div>
   </div>`;
-  return res.send(layout({ title: 'Defendants — DOJ', body, user: req.session.user, page: 'defendants' }));
+  return res.send(layout({ req, title: 'Defendants — DOJ', body, user: req.session.user, page: 'defendants' }));
 });
 
 app.get('/defendants/new', requirePerm('lawyer'), (req, res) => {
@@ -1731,7 +1755,7 @@ app.get('/defendants/new', requirePerm('lawyer'), (req, res) => {
       <div class="form-actions"><button class="btn-primary" type="submit">Save Record</button><a class="btn-sm" href="/defendants">Cancel</a></div>
     </form>
   </div>`;
-  return res.send(layout({ title: 'Add Defendant — DOJ', body, user: req.session.user, page: 'defendants' }));
+  return res.send(layout({ req, title: 'Add Defendant — DOJ', body, user: req.session.user, page: 'defendants' }));
 });
 
 app.post('/defendants', requirePerm('lawyer'), (req, res) => {
@@ -1818,7 +1842,7 @@ app.get('/defendants/:id', requirePerm('clerk'), (req, res) => {
       <div class="table-rows">${warrantRows}</div>
     </div>
   </div>`;
-  return res.send(layout({ title: `${d.fullName} — DOJ`, body, user: req.session.user, page: 'defendants' }));
+  return res.send(layout({ req, title: `${d.fullName} — DOJ`, body, user: req.session.user, page: 'defendants' }));
 });
 
 app.post('/defendants/:id/delete', requirePerm('ag'), (req, res) => {
@@ -1865,7 +1889,7 @@ app.get('/subpoenas', requirePerm('clerk'), (req, res) => {
     <div class="table-header" style="grid-template-columns:1fr 1.5fr 1fr 1fr 1fr"><span>Subpoena #</span><span>Recipient</span><span>Type</span><span>Status</span><span>Due Date</span></div>
     <div class="table-rows">${rows}</div>
   </div>`;
-  return res.send(layout({ title: 'Subpoenas — DOJ', body, user: req.session.user, page: 'subpoenas' }));
+  return res.send(layout({ req, title: 'Subpoenas — DOJ', body, user: req.session.user, page: 'subpoenas' }));
 });
 
 app.get('/subpoenas/new', requirePerm('lawyer'), (req, res) => {
@@ -1888,7 +1912,7 @@ app.get('/subpoenas/new', requirePerm('lawyer'), (req, res) => {
       <div class="form-actions"><button class="btn-primary" type="submit">Issue Subpoena</button><a class="btn-sm" href="/subpoenas">Cancel</a></div>
     </form>
   </div>`;
-  return res.send(layout({ title: 'Issue Subpoena — DOJ', body, user: req.session.user, page: 'subpoenas' }));
+  return res.send(layout({ req, title: 'Issue Subpoena — DOJ', body, user: req.session.user, page: 'subpoenas' }));
 });
 
 app.post('/subpoenas', requirePerm('lawyer'), (req, res) => {
@@ -1947,7 +1971,7 @@ app.get('/subpoenas/:id', requirePerm('clerk'), (req, res) => {
     <div class="card-title" style="margin-bottom:0.75rem">Purpose / Instructions</div>
     <p class="case-notes-text">${escapeHtml(s.purpose||'').replace(/\n/g,'<br/>')}</p>
   </div>`;
-  return res.send(layout({ title: `${s.subpoenaNumber} — DOJ`, body, user: req.session.user, page: 'subpoenas' }));
+  return res.send(layout({ req, title: `${s.subpoenaNumber} — DOJ`, body, user: req.session.user, page: 'subpoenas' }));
 });
 
 app.post('/subpoenas/:id/serve', requirePerm('lawyer'), (req, res) => {
@@ -2035,7 +2059,7 @@ app.get('/calendar', requirePerm('clerk'), (req, res) => {
       <div>${trialRows}</div>
     </div>
   </div>`;
-  return res.send(layout({ title: `Calendar — DOJ`, body, user: req.session.user, page: 'calendar' }));
+  return res.send(layout({ req, title: `Calendar — DOJ`, body, user: req.session.user, page: 'calendar' }));
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2053,7 +2077,7 @@ app.get('/channels', requirePerm('clerk'), async (req, res) => {
     const body = `
     <div class="page-header"><h1 class="page-title">Documents</h1></div>
     <div class="empty-state"><p>No document channels configured. Ensure your bot is set up and channels are prefixed with <code>dc-</code>.</p></div>`;
-    return res.send(layout({ title: 'Documents — DOJ', body, user, page: 'channels' }));
+    return res.send(layout({ req, title: 'Documents — DOJ', body, user, page: 'channels' }));
   }
 
   const channelCards = channels.map(ch => {
@@ -2071,7 +2095,7 @@ app.get('/channels', requirePerm('clerk'), async (req, res) => {
   const body = `
   <div class="page-header"><h1 class="page-title">Documents</h1><p class="page-sub">Files are organized by Discord case channel.</p></div>
   <div class="channel-list">${channelCards}</div>`;
-  return res.send(layout({ title: 'Documents — DOJ', body, user, page: 'channels' }));
+  return res.send(layout({ req, title: 'Documents — DOJ', body, user, page: 'channels' }));
 });
 
 app.get('/channels/:channelId', requirePerm('clerk'), async (req, res) => {
@@ -2113,7 +2137,7 @@ app.get('/channels/:channelId', requirePerm('clerk'), async (req, res) => {
     </form>
   </div>
   <div class="file-list">${files.length===0?`<div class="empty-state"><p>No documents yet.</p></div>`:fileRows}</div>`;
-  return res.send(layout({ title: `${resolvedName} — DOJ`, body, user, page: 'channels' }));
+  return res.send(layout({ req, title: `${resolvedName} — DOJ`, body, user, page: 'channels' }));
 });
 
 app.post('/channels/:channelId/upload', requirePerm('clerk'), upload.single('file'), (req, res) => {
@@ -2241,7 +2265,7 @@ app.get('/warrant-request', ensureAuth, (req, res) => {
     <div class="card-title" style="margin-bottom:0.75rem">Your Previous Requests</div>
     ${myRows}
   </div>` : ''}`;
-  return res.send(layout({ title: 'Request Warrant — DOJ', body, user, page: 'warrant-request' }));
+  return res.send(layout({ req, title: 'Request Warrant — DOJ', body, user, page: 'warrant-request' }));
 });
 
 app.post('/warrant-request', ensureAuth, wrUpload.single('attachment'), (req, res) => {
@@ -2342,7 +2366,7 @@ app.get('/warrant-requests', requirePerm('clerk'), (req, res) => {
     </form>
   </div>
   <div>${rows}</div>`;
-  return res.send(layout({ title: 'Warrant Requests — DOJ', body, user: req.session.user, page: 'warrant-requests' }));
+  return res.send(layout({ req, title: 'Warrant Requests — DOJ', body, user: req.session.user, page: 'warrant-requests' }));
 });
 
 app.post('/warrant-requests/:id/approve', requirePerm('clerk'), async (req, res) => {
@@ -2499,7 +2523,7 @@ app.get('/search', ensureAuth, (req, res) => {
   ${fileResults.length?`<div class="card"><div class="card-title" style="margin-bottom:0.75rem">Documents (${fileResults.length})</div>${fileResults.map(f=>`<div class="file-row"><div class="file-ext">FILE</div><div class="file-info"><div class="file-name">${escapeHtml(f.originalName)}</div><div class="file-meta">${formatSize(f.size)}</div></div><a class="btn-sm" href="/channels/${f.channelId}/files/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.originalName)}">Download</a></div>`).join('')}</div>`:''}
   ${lq&&total===0?`<div class="empty-state"><p>No results for "<strong>${escapeHtml(q)}</strong>".</p></div>`:''}
   ${!lq?`<div class="empty-state"><p>Enter a search term above to search across all records.</p></div>`:''}`;
-  return res.send(layout({ title: 'Search — DOJ', body, user: req.session.user, page: 'search' }));
+  return res.send(layout({ req, title: 'Search — DOJ', body, user: req.session.user, page: 'search' }));
 });
 
 app.get('/bar-registry', ensureAuth, (req, res) => {
@@ -2516,8 +2540,166 @@ app.get('/bar-registry', ensureAuth, (req, res) => {
       loading="lazy"
     ></iframe>
   </div>`;
-  return res.send(layout({ title: 'Bar Registry — DOJ', body, user: req.session.user, page: 'bar-registry' }));
+  return res.send(layout({ req, title: 'Bar Registry — DOJ', body, user: req.session.user, page: 'bar-registry' }));
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// ADMIN — Role Configuration & View-As
+// ════════════════════════════════════════════════════════════════════════════
+
+function requireRealAg(req, res, next) {
+  if (!req.session.user) return res.redirect('/');
+  const realPl = req.session.originalPermLevel || req.session.user.permLevel;
+  if (!hasPerm(realPl, 'ag')) {
+    const body = `<div class="access-denied"><h2>Access Denied</h2><p>Administration requires Attorney General access.</p><a class="btn-primary" href="/dashboard">Dashboard</a></div>`;
+    return res.status(403).send(layout({ req, title: 'Access Denied — DOJ', body, user: req.session.user, page: '' }));
+  }
+  next();
+}
+
+app.get('/admin/roles', requireRealAg, (req, res) => {
+  const cfg = loadRoleConfig();
+  const viewAsRole = req.session.viewAsRole || null;
+  const realPl = req.session.originalPermLevel || req.session.user.permLevel;
+
+  const LEVEL_META = {
+    ag:     { label: 'Attorney General / Administrator', badgeClass: 'badge-green' },
+    lawyer: { label: 'Attorney / ADA / Judge',           badgeClass: 'badge-purple' },
+    clerk:  { label: 'Court Clerk / Paralegal',          badgeClass: 'badge-blue' }
+  };
+
+  function keywordRow(level) {
+    const keywords = cfg[level] || [];
+    const { label, badgeClass } = LEVEL_META[level];
+    return `
+    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+      <div style="font-weight:700;font-size:0.95rem">${escapeHtml(label)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.4rem;min-height:1.75rem">
+        ${keywords.length ? keywords.map(kw => `
+          <span class="badge ${badgeClass}" style="display:inline-flex;align-items:center;gap:0.35rem;padding-right:0.3rem">
+            ${escapeHtml(kw)}
+            <form method="post" action="/admin/roles/keywords/remove" style="display:inline;margin:0">
+              <input type="hidden" name="level" value="${escapeHtml(level)}"/>
+              <input type="hidden" name="keyword" value="${escapeHtml(kw)}"/>
+              <button type="submit" title="Remove keyword" style="background:none;border:none;cursor:pointer;color:inherit;padding:0 2px;line-height:1;font-size:0.85rem;opacity:0.7">&times;</button>
+            </form>
+          </span>`).join('') : '<span class="muted-text" style="font-size:0.85rem">No keywords — all users default to Citizen.</span>'}
+      </div>
+      <form method="post" action="/admin/roles/keywords/add" style="display:flex;gap:0.4rem;flex-wrap:wrap">
+        <input type="hidden" name="level" value="${escapeHtml(level)}"/>
+        <input type="text" name="keyword" placeholder="e.g. deputy attorney" class="form-input" style="width:210px" required/>
+        <button class="btn-primary" type="submit" style="font-size:0.85rem;padding:0.4rem 0.85rem">Add Keyword</button>
+      </form>
+    </div>`;
+  }
+
+  const ROLE_OPTIONS = [
+    { value: 'citizen', label: 'Citizen',              badge: 'badge-gray',   desc: 'Warrant lookup only' },
+    { value: 'clerk',   label: 'Court Clerk',          badge: 'badge-blue',   desc: 'View & edit cases, issue warrants' },
+    { value: 'lawyer',  label: 'Attorney / ADA',       badge: 'badge-purple', desc: '+ Issue subpoenas' },
+    { value: 'ag',      label: 'Attorney General',     badge: 'badge-green',  desc: '+ Full admin access' }
+  ];
+
+  const body = `
+  <h1 class="page-title">Administration</h1>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Role Keyword Mapping</span>
+      <form method="post" action="/admin/roles/reset" style="margin:0">
+        <button class="btn-sm" type="submit" onclick="return confirm('Reset all keywords to the built-in defaults?')">Reset to Defaults</button>
+      </form>
+    </div>
+    <div style="padding:1rem">
+      <p class="muted-text" style="margin:0 0 1rem">Discord role names are matched against these keywords. If a member&rsquo;s role name <em>contains</em> a keyword, they receive that permission level. AG is checked first, then Attorney, then Clerk. Changes take effect immediately on next login.</p>
+      <div style="display:flex;flex-direction:column;gap:0.75rem">
+        ${keywordRow('ag')}
+        ${keywordRow('lawyer')}
+        ${keywordRow('clerk')}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem">
+    <div class="card-header">
+      <span class="card-title">Preview Portal as Role</span>
+      ${viewAsRole ? `<span class="badge badge-yellow">Preview Active</span>` : ''}
+    </div>
+    <div style="padding:1rem">
+      <p class="muted-text" style="margin:0 0 1rem">Temporarily view the portal exactly as a member with the selected role sees it — navigation, access restrictions, and all. Your real AG session is preserved; click <strong>Exit Preview</strong> at any time to return.</p>
+      ${viewAsRole ? `
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+        <span style="color:#92400e;font-weight:600">Currently previewing as: ${escapeHtml(PERM_LEVEL_LABEL[req.session.user.permLevel] || req.session.user.permLevel)}</span>
+        <form method="post" action="/admin/view-as/reset" style="margin:0">
+          <button type="submit" class="btn-primary" style="background:#92400e;border-color:#92400e">Exit Preview &amp; Restore AG Access</button>
+        </form>
+      </div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.75rem">
+        ${ROLE_OPTIONS.map(opt => `
+        <form method="post" action="/admin/view-as" style="margin:0">
+          <input type="hidden" name="role" value="${opt.value}"/>
+          <button type="submit" style="width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:0.75rem 1rem;background:${viewAsRole===opt.value?'#f5f3ff':'#fff'};cursor:pointer;text-align:left;${viewAsRole===opt.value?'border-color:#7c3aed;':''}">
+            <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.25rem">
+              <span class="badge ${opt.badge}">${escapeHtml(opt.label)}</span>
+            </div>
+            <div class="muted-text" style="font-size:0.8rem">${escapeHtml(opt.desc)}</div>
+          </button>
+        </form>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  return res.send(layout({ req, title: 'Admin — DOJ', body, user: req.session.user, page: 'admin' }));
+});
+
+app.post('/admin/roles/keywords/add', requireRealAg, (req, res) => {
+  const { level, keyword } = req.body;
+  if (!['ag', 'lawyer', 'clerk'].includes(level)) return res.status(400).send('Invalid level.');
+  const kw = (keyword || '').toLowerCase().trim();
+  if (!kw) return res.redirect('/admin/roles');
+  const cfg = loadRoleConfig();
+  if (!cfg[level]) cfg[level] = [];
+  if (!cfg[level].includes(kw)) cfg[level].push(kw);
+  saveRoleConfig(cfg);
+  return res.redirect('/admin/roles');
+});
+
+app.post('/admin/roles/keywords/remove', requireRealAg, (req, res) => {
+  const { level, keyword } = req.body;
+  if (!['ag', 'lawyer', 'clerk'].includes(level)) return res.status(400).send('Invalid level.');
+  const cfg = loadRoleConfig();
+  if (cfg[level]) cfg[level] = cfg[level].filter(k => k !== keyword);
+  saveRoleConfig(cfg);
+  return res.redirect('/admin/roles');
+});
+
+app.post('/admin/roles/reset', requireRealAg, (req, res) => {
+  saveRoleConfig(JSON.parse(JSON.stringify(DEFAULT_ROLE_KEYWORDS)));
+  return res.redirect('/admin/roles');
+});
+
+app.post('/admin/view-as', requireRealAg, (req, res) => {
+  const { role } = req.body;
+  if (!['citizen', 'clerk', 'lawyer', 'ag'].includes(role)) return res.status(400).send('Invalid role.');
+  if (!req.session.viewAsRole) {
+    req.session.originalPermLevel = req.session.user.permLevel;
+  }
+  req.session.viewAsRole = role;
+  req.session.user.permLevel = role;
+  return res.redirect('/admin/roles');
+});
+
+app.post('/admin/view-as/reset', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  if (req.session.originalPermLevel) {
+    req.session.user.permLevel = req.session.originalPermLevel;
+    delete req.session.originalPermLevel;
+  }
+  delete req.session.viewAsRole;
+  return res.redirect('/dashboard');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 let _bot = null;
 let _lastBotErrLog = 0;

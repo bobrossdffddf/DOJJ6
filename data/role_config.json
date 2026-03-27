@@ -1,0 +1,41 @@
+{
+  "ag": [
+    "attorney general",
+    "ag",
+    "chief justice",
+    "chief",
+    "director",
+    "superintendent",
+    "secretary of state",
+    "governor",
+    "administrator"
+  ],
+  "lawyer": [
+    "lawyer",
+    "attorney",
+    "ada",
+    "prosecutor",
+    "district attorney",
+    "judge",
+    "justice",
+    "counsel",
+    "solicitor",
+    "defender",
+    "barrister",
+    "litigation",
+    "dda",
+    "assistant da"
+  ],
+  "clerk": [
+    "clerk",
+    "paralegal",
+    "secretary",
+    "filing",
+    "registrar",
+    "notary",
+    "admin assistant",
+    "legal assistant",
+    "law clerk",
+    "court clerk"
+  ]
+}

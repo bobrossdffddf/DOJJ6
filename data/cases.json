@@ -30,47 +30,50 @@
     "caseNotes": [],
     "createdBy": "justawacko_",
     "createdAt": "2026-03-27T15:33:09.455Z",
-    "updatedAt": "2026-03-27T15:36:02.867Z",
-    "discordLink": {
-      "channelId": "1487111815157645513",
-      "channelName": "dc-123",
-      "discoveryThreadId": "1487112314661638297",
-      "documentsThreadId": "1487112316150349865",
-      "linkedBy": "AG | Saul Goodman",
-      "linkedByDiscordId": "848356730256883744",
-      "linkedAt": "2026-03-27T15:33:27.150Z",
-      "guildId": "1478249115530821685",
-      "announcementMessageId": "1487112313533366285",
-      "exhibitRegistryMessageId": "1487112320588189696"
-    },
+    "updatedAt": "2026-03-27T15:50:33.041Z",
+    "discordLink": null,
     "courtDocuments": [
       {
-        "id": "mn92a2xigvjx47",
-        "filename": "warrant_W-2026-0002_1774548223035.pdf",
-        "url": "https://cdn.discordapp.com/attachments/1487112316150349865/1487112413919576196/warrant_W-2026-0002_1774548223035.pdf?ex=69c7f4dc&is=69c6a35c&hm=46fdd973b6d606905e7e22499cbfdd01466887fe2739e63b73b5e51992b71255&",
+        "id": "mn92p6fa44bng4",
+        "filename": "warrant_W-2026-0002_1774548223035_1.pdf",
+        "url": "https://cdn.discordapp.com/attachments/1487115131325251604/1487115368580518039/warrant_W-2026-0002_1774548223035_1.pdf?ex=69c7f79d&is=69c6a61d&hm=0fc797b8b75906623ade2e7037015f46ba8a1d44f73a28ac5cb50b4ae5e6ca14&",
         "type": "PDF",
         "addedBy": "AG | Saul Goodman",
         "addedByDiscordId": "848356730256883744",
-        "addedAt": "2026-03-27T15:33:49.014Z",
-        "messageId": "1487112414297325660"
+        "addedAt": "2026-03-27T15:45:33.382Z",
+        "messageId": "1487115368945160322"
       }
     ],
     "exhibits": [
       {
-        "id": "mn92ak25evorko",
+        "id": "mn92o92alz7clr",
         "letter": "A",
-        "filename": "warrant_W-2026-0002_1774548223035.pdf",
-        "url": "https://cdn.discordapp.com/attachments/1487112314661638297/1487112507607748852/warrant_W-2026-0002_1774548223035.pdf?ex=69c7f4f3&is=69c6a373&hm=09ecb18d2cc14e97b87b9c2e5baaa4916be49c6c85a06e67412545dd8fe0b3e5&",
-        "type": "pdf",
+        "filename": "warrant_W-2026-0002_1774548223035_1.pdf",
+        "url": "https://cdn.discordapp.com/attachments/1487115129542676590/1487115187353030676/warrant_W-2026-0002_1774548223035_1.pdf?ex=69c7f771&is=69c6a5f1&hm=3572b6b011e10ac06516e4b8ab36e733ff09e9b802f7e1bdfb53c5f0b0a4c9a1&",
+        "type": "PDF",
         "addedBy": "AG | Saul Goodman",
         "addedByDiscordId": "848356730256883744",
-        "addedAt": "2026-03-27T15:34:11.213Z",
-        "messageId": "1487112508044214405",
-        "threadId": "1487112314661638297",
+        "addedAt": "2026-03-27T15:44:50.146Z",
+        "messageId": "1487115187944161413",
+        "threadId": "1487115129542676590",
         "status": "admitted",
         "description": "",
         "statusSetBy": "justawacko_",
-        "statusSetAt": "2026-03-27T15:36:02.867Z"
+        "statusSetAt": "2026-03-27T15:45:03.291Z"
+      },
+      {
+        "id": "mn92rvogk0b4wp",
+        "letter": "B",
+        "filename": "1774548133168_1774537118312_image.webp",
+        "url": "https://cdn.discordapp.com/attachments/1487115129542676590/1487115896701976749/1774548133168_1774537118312_image.webp?ex=69c7f81b&is=69c6a69b&hm=b31070adc0ead3559b6c73126acf8f17cc34a9799cdbecf411c2d03711235ec6&",
+        "type": "WEBP",
+        "addedBy": "AG | Saul Goodman",
+        "addedByDiscordId": "848356730256883744",
+        "addedAt": "2026-03-27T15:47:39.424Z",
+        "messageId": "1487115897255493835",
+        "threadId": "1487115129542676590",
+        "status": "pending",
+        "description": ""
       }
     ]
   }
