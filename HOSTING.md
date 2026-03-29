@@ -42,7 +42,22 @@ Replace the GitHub URL with wherever you store this project. Alternatively, copy
 
 ---
 
-## 4. Create the environment file
+## 4. Set up the Python environment (required for PDF generation)
+
+Debian 12/13 restricts system-wide pip installs. Run the included setup script to create an isolated Python environment:
+
+```bash
+cd /opt/doj-portal
+apt install -y python3 python3-venv
+chmod +x setup_python.sh
+./setup_python.sh
+```
+
+This creates a `.venv/` folder and installs `pypdf` and `reportlab` inside it. The server detects and uses it automatically — no further configuration needed.
+
+---
+
+## 5. Create the environment file
 
 ```bash
 nano /opt/doj-portal/.env
@@ -68,7 +83,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ---
 
-## 5. Ensure the data directory exists
+## 6. Ensure the data directory exists
 
 ```bash
 mkdir -p /opt/doj-portal/data/uploads
@@ -78,7 +93,7 @@ The app creates JSON data files automatically on first run.
 
 ---
 
-## 6. Run as a systemd service (auto-start on boot)
+## 7. Run as a systemd service (auto-start on boot)
 
 Create the service file:
 ```bash
@@ -119,18 +134,18 @@ journalctl -u doj-portal -f
 
 ---
 
-## 7. Expose the portal — Option A: Cloudflare Tunnel (Recommended)
+## 8. Expose the portal — Option A: Cloudflare Tunnel (Recommended)
 
 Cloudflare Tunnel is the easiest option. It gives you HTTPS automatically with no port forwarding, no firewall rules, and no certificate management. You only need a free Cloudflare account and a domain pointed to Cloudflare.
 
-### 7a. Install cloudflared
+### 8a. Install cloudflared
 
 ```bash
 curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
 dpkg -i cloudflared.deb
 ```
 
-### 7b. Log in and create the tunnel
+### 8b. Log in and create the tunnel
 
 ```bash
 cloudflared tunnel login
@@ -144,7 +159,7 @@ cloudflared tunnel create doj-portal
 
 This creates the tunnel and saves credentials to `/root/.cloudflared/`.
 
-### 7c. Create the tunnel config
+### 8c. Create the tunnel config
 
 ```bash
 nano /root/.cloudflared/config.yml
@@ -161,7 +176,7 @@ ingress:
   - service: http_status:404
 ```
 
-### 7d. Route your domain through the tunnel
+### 8d. Route your domain through the tunnel
 
 ```bash
 cloudflared tunnel route dns doj-portal yourdomain.com
@@ -169,7 +184,7 @@ cloudflared tunnel route dns doj-portal yourdomain.com
 
 This automatically creates a CNAME record in Cloudflare DNS pointing your domain to the tunnel.
 
-### 7e. Run the tunnel as a systemd service
+### 8e. Run the tunnel as a systemd service
 
 ```bash
 cloudflared service install
@@ -178,7 +193,7 @@ systemctl start cloudflared
 systemctl status cloudflared
 ```
 
-### 7f. Update your environment file
+### 8f. Update your environment file
 
 Update `.env` to use your Cloudflare domain:
 ```
@@ -194,7 +209,7 @@ Also add the redirect URI in the Discord Developer Portal under **OAuth2 → Red
 
 ---
 
-## 7. Expose the portal — Option B: Nginx + Let's Encrypt
+## 8. Expose the portal — Option B: Nginx + Let's Encrypt
 
 Use this if you prefer a traditional reverse proxy with a static IP and open ports (80/443).
 
@@ -250,7 +265,7 @@ Certbot will edit the config and set up auto-renewal automatically.
 
 ---
 
-## 8. Discord Developer Portal configuration
+## 9. Discord Developer Portal configuration
 
 1. Go to https://discord.com/developers/applications
 2. Select your app
@@ -267,7 +282,7 @@ https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=68608&
 
 ---
 
-## 9. Firewall (Option B / Nginx only)
+## 10. Firewall (Option B / Nginx only)
 
 If using Nginx, open ports 80 and 443. With Cloudflare Tunnel you do not need to open any ports.
 

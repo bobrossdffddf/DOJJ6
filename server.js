@@ -8,6 +8,9 @@ const crypto = require("crypto");
 const { spawn } = require("child_process");
 require("dotenv").config();
 
+const VENV_PYTHON = path.join(__dirname, ".venv", "bin", "python3");
+const PYTHON_BIN = fs.existsSync(VENV_PYTHON) ? VENV_PYTHON : "python3";
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -67,7 +70,7 @@ function generateWarrantPdf(warrantData) {
       WARRANT_PDFS_DIR,
       `warrant_${warrantData.warrantNumber}_${Date.now()}.pdf`,
     );
-    const py = spawn("python3", [
+    const py = spawn(PYTHON_BIN, [
       path.join(__dirname, "generate_warrant.py"),
       outFile,
     ]);
